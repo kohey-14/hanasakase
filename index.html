@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>My Habits</title>
+    <style>
+        :root {
+            --bg-color: #f2f2f7;
+            --card-bg: #ffffff;
+            --primary: #007aff;
+            --text-main: #000000;
+            --text-sub: #8e8e93;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            padding-top: 60px; /* ステータスバー対策 */
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 22px;
+            font-weight: 600;
+            margin-bottom: 24px;
+        }
+
+        /* 読み込みメッセージ */
+        #status-msg {
+            text-align: center;
+            font-size: 14px;
+            color: var(--text-sub);
+            margin-bottom: 20px;
+            min-height: 20px;
+        }
+
+        .habit-list {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .habit-card {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            cursor: pointer;
+            transition: transform 0.1s ease, background-color 0.2s;
+        }
+
+        .habit-card:active {
+            transform: scale(0.98);
+            background-color: #e5e5ea;
+        }
+
+        .habit-name {
+            font-size: 17px;
+            font-weight: 400;
+        }
+
+        /* チェックボックスのデザイン */
+        .checkbox {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 2px solid #c7c7cc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .checkbox.checked {
+            background-color: var(--primary);
+            border-color: var(--primary);
+        }
+
+        .checkbox.checked::after {
+            content: '';
+            display: block;
+            width: 5px;
+            height: 9px;
+            border: solid white;
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg);
+            margin-bottom: 2px;
+        }
+
+        /* エラー表示用 */
+        .error-box {
+            background-color: #ffe5e5;
+            color: #d8000c;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 12px;
+            margin-top: 20px;
+            display: none; /* 最初は隠す */
+            white-space: pre-wrap; /* 改行を反映 */
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>今日の習慣</h1>
+    
+    <div id="status-msg">読み込み中...</div>
+
+    <div class="habit-list" id="habit-list">
+        </div>
+
+    <div id="error-log" class="error-box"></div>
+
+    <script>
+        // ==========================================
+        // ↓↓↓ ここにGASのウェブアプリURLを貼る ↓↓↓
+        // ==========================================
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby-gjPZTKo2-9F8IpCksFjn-BkpC6yPYv0eHOgyM1ZollaZAc8E1K_agL-HvvP243be/exec"; 
+        // （↑ここに最新のデプロイURLを入れてください）
+
+        
+        const listContainer = document.getElementById('habit-list');
+        const statusMsg = document.getElementById('status-msg');
+        const errorLog = document.getElementById('error-log');
+
+        // エラーを表示する関数
+        function showError(msg, detail = "") {
+            statusMsg.style.display = 'none';
+            errorLog.style.display = 'block';
+            errorLog.textContent = `【エラー発生】\n${msg}\n\n詳細:\n${detail}`;
+        }
+
+        // 1. データ取得（読み込み）
+        async function fetchHabits() {
+            try {
+                const response = await fetch(SCRIPT_URL);
+                
+                if (!response.ok) {
+                    throw new Error(`サーバーエラー: ${response.status}`);
+                }
+
+                const text = await response.text();
+                
+                // HTMLが返ってきていないかチェック（権限エラー対策）
+                if (text.trim().startsWith("<")) {
+                    throw new Error("データではなくHTMLが返ってきました。\nGASのデプロイ設定で「アクセスできるユーザー」が「全員」になっているか確認してください。");
+                }
+
+                try {
+                    const habits = JSON.parse(text);
+                    renderHabits(habits);
+                    statusMsg.style.display = 'none'; // 成功したらメッセージ消す
+                } catch (e) {
+                    throw new Error("データの形式が正しくありません。\n" + text.substring(0, 50) + "...");
+                }
+
+            } catch (error) {
+                console.error(error);
+                showError("データの読み込みに失敗しました。", error.message);
+            }
+        }
+
+        // 2. 画面描画
+        function renderHabits(habits) {
+            listContainer.innerHTML = '';
+            
+            if (habits.length === 0) {
+                listContainer.innerHTML = '<p style="text-align:center; color:#888;">習慣が登録されていません</p>';
+                return;
+            }
+
+            habits.forEach(habit => {
+                const card = document.createElement('div');
+                card.className = 'habit-card';
+                card.onclick = () => toggleHabit(habit, card); // クリック設定
+
+                const name = document.createElement('span');
+                name.className = 'habit-name';
+                name.textContent = habit.name;
+
+                const check = document.createElement('div');
+                check.className = `checkbox ${habit.done ? 'checked' : ''}`;
+
+                card.appendChild(name);
+                card.appendChild(check);
+                listContainer.appendChild(card);
+            });
+        }
+
+        // 3. 更新処理（チェック切替）
+        async function toggleHabit(habit, cardElement) {
+            // 見た目を先に更新（サクサク動かすため）
+            const newStatus = !habit.done;
+            habit.done = newStatus;
+            
+            const checkbox = cardElement.querySelector('.checkbox');
+            if (newStatus) checkbox.classList.add('checked');
+            else checkbox.classList.remove('checked');
+
+            // 裏側で通信
+            try {
+                await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors', // 重要: CORSエラー回避
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: JSON.stringify({ id: habit.id, done: newStatus })
+                });
+                console.log("保存完了:", habit.name, newStatus);
+            } catch (error) {
+                console.error("保存失敗:", error);
+                alert("保存に失敗しました。通信環境を確認してください。");
+                // エラー時は見た目を戻す
+                habit.done = !newStatus;
+                if (!newStatus) checkbox.classList.add('checked');
+                else checkbox.classList.remove('checked');
+            }
+        }
+
+        // 開始
+        fetchHabits();
+
+    </script>
+</body>
+</html>
