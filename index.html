@@ -4,298 +4,343 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>My Habits</title>
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>Habit Garden</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <style>
         :root {
-            --bg-color: #f2f2f7;
+            --bg-color: #f0f4f8;
+            --primary: #27ae60; /* 植物の緑 */
             --card-bg: #ffffff;
-            --primary: #007aff;
-            --text-main: #1c1c1e;
-            --text-sub: #8e8e93;
-            --shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            --text-main: #2c3e50;
+            --shadow: 0 4px 15px rgba(0,0,0,0.05);
         }
-
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
             background-color: var(--bg-color);
             color: var(--text-main);
             margin: 0;
             padding: 20px;
-            padding-top: 60px;
-            padding-bottom: 40px;
+            padding-top: 50px;
+            padding-bottom: 80px;
             -webkit-tap-highlight-color: transparent;
         }
 
-        /* ヘッダーエリア */
-        header {
+        /* --- 植物エリア --- */
+        .garden-container {
             text-align: center;
             margin-bottom: 30px;
-        }
-
-        .date-display {
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--text-sub);
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 5px;
-        }
-
-        h1 {
-            font-size: 28px;
-            font-weight: 800;
-            margin: 0;
-        }
-
-        /* 進捗リング */
-        .progress-container {
+            padding: 25px;
+            background: white;
+            border-radius: 24px;
+            box-shadow: var(--shadow);
             position: relative;
-            width: 120px;
-            height: 120px;
-            margin: 20px auto 30px;
+            overflow: hidden;
         }
-
-        .progress-ring__circle {
-            transition: stroke-dashoffset 0.5s ease-in-out;
-            transform: rotate(-90deg);
-            transform-origin: 50% 50%;
+        .plant-emoji {
+            font-size: 80px;
+            display: block;
+            margin-bottom: 10px;
+            animation: bounce 3s infinite ease-in-out;
         }
-
-        .progress-text {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 24px;
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-8px); }
+        }
+        .level-text {
+            font-size: 15px;
+            color: #7f8c8d;
             font-weight: 700;
-            color: var(--primary);
+            letter-spacing: 0.5px;
+        }
+        /* 経験値バー */
+        .exp-bar-bg {
+            width: 80%;
+            height: 8px;
+            background: #ecf0f1;
+            border-radius: 10px;
+            margin: 15px auto 5px;
+            overflow: hidden;
+        }
+        .exp-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #2ecc71, #27ae60);
+            width: 0%;
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .total-count {
+            font-size: 12px;
+            color: #bdc3c7;
         }
 
-        /* リストスタイル */
-        .habit-list {
-            max-width: 500px;
-            margin: 0 auto;
-        }
-
+        /* --- 習慣カード --- */
         .habit-card {
-            background-color: var(--card-bg);
-            border-radius: 16px;
-            padding: 18px 20px;
-            margin-bottom: 14px;
+            background: var(--card-bg);
+            border-radius: 18px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+            transition: transform 0.1s;
+        }
+        .habit-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            box-shadow: var(--shadow);
-            cursor: pointer;
-            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+            margin-bottom: 15px;
         }
-
-        .habit-card:active {
-            transform: scale(0.96);
-        }
-
         .habit-name {
-            font-size: 17px;
+            font-weight: 700;
+            font-size: 18px;
+        }
+        
+        /* スイッチボタン */
+        .toggle-btn {
+            width: 52px;
+            height: 32px;
+            background: #dfe4ea;
+            border-radius: 20px;
+            position: relative;
+            cursor: pointer;
+            transition: background 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .toggle-btn::after {
+            content: '';
+            position: absolute;
+            top: 4px;
+            left: 4px;
+            width: 24px;
+            height: 24px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        /* ONの状態 */
+        .toggle-btn.active {
+            background: var(--primary);
+        }
+        .toggle-btn.active::after {
+            transform: translateX(20px);
+        }
+
+        /* --- カレンダー --- */
+        .streak-info {
+            font-size: 12px;
+            color: #95a5a6;
+            margin-bottom: 8px;
             font-weight: 500;
         }
-
-        .checkbox {
-            width: 26px;
-            height: 26px;
-            border-radius: 50%;
-            border: 2px solid #d1d1d6;
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr); /* 1週間分 */
+            gap: 6px;
+        }
+        .cal-day {
+            aspect-ratio: 1;
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: all 0.3s ease;
-            position: relative;
+            font-size: 10px;
+            border-radius: 6px;
+            background: #f7f9fa;
+            color: #cbd5e0;
+            font-weight: 600;
         }
-
-        .checkbox.checked {
-            background-color: var(--primary);
-            border-color: var(--primary);
-            animation: pulse 0.3s ease-in-out;
+        .cal-day.done {
+            background: #2ecc71;
+            color: white;
+            box-shadow: 0 2px 4px rgba(46, 204, 113, 0.2);
         }
-
-        .checkbox.checked::after {
-            content: '';
-            width: 6px;
-            height: 10px;
-            border: solid white;
-            border-width: 0 2.5px 2.5px 0;
-            transform: rotate(45deg);
-            margin-bottom: 2px;
-        }
-
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(0, 122, 255, 0.4); }
-            70% { box-shadow: 0 0 0 10px rgba(0, 122, 255, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(0, 122, 255, 0); }
-        }
-
-        /* 読み込み・エラー表示 */
-        #status-msg {
-            text-align: center;
-            color: var(--text-sub);
-            margin-top: 50px;
-        }
-        
-        /* 完了時のテキストスタイル */
-        .habit-card.done .habit-name {
-            color: #c7c7cc;
-            text-decoration: line-through;
+        .cal-day.today {
+            border: 2px solid #34495e;
+            box-sizing: border-box; /*枠線を含めてサイズ計算*/
         }
     </style>
 </head>
 <body>
 
-    <header>
-        <div class="date-display" id="date-display">Thinking...</div>
-        <h1>Daily Habits</h1>
-    </header>
-
-    <div class="progress-container">
-        <svg class="progress-ring" width="120" height="120">
-            <circle stroke="#e5e5ea" stroke-width="8" fill="transparent" r="52" cx="60" cy="60" />
-            <circle class="progress-ring__circle" stroke="#007aff" stroke-width="8" stroke-linecap="round" fill="transparent" r="52" cx="60" cy="60" style="stroke-dasharray: 326.726; stroke-dashoffset: 326.726;" />
-        </svg>
-        <div class="progress-text" id="progress-text">0%</div>
+    <div class="garden-container">
+        <div id="plant-icon" class="plant-emoji">🌱</div>
+        <div id="garden-message" class="level-text">読み込み中...</div>
+        <div class="exp-bar-bg">
+            <div id="exp-bar" class="exp-bar-fill"></div>
+        </div>
+        <p class="total-count">Total Completed: <span id="total-count">0</span></p>
     </div>
 
-    <div id="status-msg">読み込み中...</div>
-
-    <div class="habit-list" id="habit-list"></div>
+    <div id="habit-list"></div>
 
     <script>
-        // ↓↓↓↓↓ ご自身のURLに書き換えてください ↓↓↓↓↓
+        // ▼▼▼ あなたのURLを埋め込みました ▼▼▼
         const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby-gjPZTKo2-9F8IpCksFjn-BkpC6yPYv0eHOgyM1ZollaZAc8E1K_agL-HvvP243be/exec";
-        // ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
 
         const listContainer = document.getElementById('habit-list');
-        const statusMsg = document.getElementById('status-msg');
-        const progressCircle = document.querySelector('.progress-ring__circle');
-        const progressText = document.getElementById('progress-text');
-        
-        // 円周の長さ
-        const radius = progressCircle.r.baseVal.value;
-        const circumference = radius * 2 * Math.PI;
+        const todayStr = new Date().toISOString().split('T')[0]; // "2024-01-06"
+        let habitsData = [];
 
-        progressCircle.style.strokeDasharray = `${circumference} ${circumference}`;
-        progressCircle.style.strokeDashoffset = circumference;
-
-        // 今日の日付を表示
-        const now = new Date();
-        const options = { month: 'long', day: 'numeric', weekday: 'short' };
-        document.getElementById('date-display').textContent = now.toLocaleDateString('ja-JP', options);
-
-        let localHabits = []; // ローカルで状態を保持
+        // 植物の進化データ
+        const plantLevels = [
+            { threshold: 0, icon: "🌱", title: "種まき (Sprout)" },
+            { threshold: 5, icon: "🌿", title: "双葉 (Seedling)" },
+            { threshold: 15, icon: "🪴", title: "鉢植え (Potted)" },
+            { threshold: 30, icon: "🌳", title: "若木 (Sapling)" },
+            { threshold: 50, icon: "🍎", title: "実り (Fruiting)" },
+            { threshold: 100, icon: "🏰", title: "大樹 (Elder Tree)" }
+        ];
 
         // 1. データ取得
         async function fetchHabits() {
             try {
-                const response = await fetch(SCRIPT_URL);
-                if (!response.ok) throw new Error("Server Error");
+                const res = await fetch(SCRIPT_URL);
+                if (!res.ok) throw new Error("Network response was not ok");
                 
-                const text = await response.text();
-                // 万が一HTMLが返ってきた場合のガード
-                if(text.trim().startsWith("<")) throw new Error("Auth Error");
-
-                localHabits = JSON.parse(text);
-                statusMsg.style.display = 'none';
-                renderHabits();
-                updateProgress();
-            } catch (error) {
-                console.error(error);
-                statusMsg.textContent = "読み込みに失敗しました";
+                // HTMLが返ってきていないかチェック（権限エラー対策）
+                const text = await res.text();
+                if (text.startsWith("<")) throw new Error("Auth Error");
+                
+                habitsData = JSON.parse(text);
+                renderAll();
+                updateGarden();
+            } catch (e) {
+                console.error(e);
+                document.getElementById('garden-message').textContent = "Connection Error";
+                // デモ用に仮データを表示しても良いですが、今回はエラー表示のみ
             }
         }
 
-        // 2. 画面描画
-        function renderHabits() {
+        // 2. 全体描画
+        function renderAll() {
             listContainer.innerHTML = '';
-            localHabits.forEach(habit => {
+            habitsData.forEach(habit => {
+                // 今日の日付が履歴にあるか？
+                const isDoneToday = habit.history.includes(todayStr);
+                
                 const card = document.createElement('div');
-                card.className = `habit-card ${habit.done ? 'done' : ''}`;
-                card.onclick = () => toggleHabit(habit.id); // IDで管理
+                card.className = 'habit-card';
 
-                const name = document.createElement('span');
+                // ヘッダー部
+                const header = document.createElement('div');
+                header.className = 'habit-header';
+                
+                const name = document.createElement('div');
                 name.className = 'habit-name';
                 name.textContent = habit.name;
 
-                const check = document.createElement('div');
-                check.className = `checkbox ${habit.done ? 'checked' : ''}`;
+                const toggle = document.createElement('div');
+                toggle.className = `toggle-btn ${isDoneToday ? 'active' : ''}`;
+                toggle.onclick = () => toggleHabit(habit.id); // クリック時処理
 
-                card.appendChild(name);
-                card.appendChild(check);
+                header.appendChild(name);
+                header.appendChild(toggle);
+                card.appendChild(header);
+
+                // カレンダー部
+                const streakInfo = document.createElement('div');
+                streakInfo.className = 'streak-info';
+                streakInfo.textContent = `これまでの積み上げ: ${habit.history.length}日`;
+                
+                const calendar = createMiniCalendar(habit.history);
+                
+                card.appendChild(streakInfo);
+                card.appendChild(calendar);
                 listContainer.appendChild(card);
             });
         }
 
-        // 3. 進捗更新 & 紙吹雪判定
-        function updateProgress() {
-            const total = localHabits.length;
-            const doneCount = localHabits.filter(h => h.done).length;
-            const percent = total === 0 ? 0 : Math.round((doneCount / total) * 100);
+        // 3. カレンダー生成（過去13日＋今日）
+        function createMiniCalendar(history) {
+            const grid = document.createElement('div');
+            grid.className = 'calendar-grid';
 
-            // リングアニメーション
-            const offset = circumference - (percent / 100) * circumference;
-            progressCircle.style.strokeDashoffset = offset;
-            progressText.textContent = `${percent}%`;
+            // 過去13日前から今日(0)までループ
+            for (let i = 13; i >= 0; i--) {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                const dateStr = d.toISOString().split('T')[0];
+                const dayNum = d.getDate();
+                
+                const cell = document.createElement('div');
+                let cellClass = 'cal-day';
+                
+                if (history.includes(dateStr)) cellClass += ' done';
+                if (i === 0) cellClass += ' today'; // 今日を強調
 
-            // 100%達成時の紙吹雪
-            if (percent === 100 && total > 0) {
-                triggerConfetti();
+                cell.className = cellClass;
+                cell.textContent = dayNum;
+                
+                grid.appendChild(cell);
             }
+            return grid;
         }
 
-        // 4. 切り替え処理
-        async function toggleHabit(id) {
-            // ローカルデータを即時更新（サクサク感のため）
-            const habit = localHabits.find(h => h.id === id);
-            habit.done = !habit.done;
-            
-            renderHabits(); // 画面更新
-            updateProgress(); // 進捗更新
+        // 4. 植物の成長更新
+        function updateGarden() {
+            let totalDone = 0;
+            habitsData.forEach(h => totalDone += h.history.length);
 
-            // 裏側で送信
+            // 現在のレベルを判定
+            let currentLevel = plantLevels[0];
+            let nextThreshold = 100;
+
+            for (let i = 0; i < plantLevels.length; i++) {
+                if (totalDone >= plantLevels[i].threshold) {
+                    currentLevel = plantLevels[i];
+                    // 次の目標値
+                    if (plantLevels[i+1]) {
+                        nextThreshold = plantLevels[i+1].threshold;
+                    } else {
+                        nextThreshold = totalDone * 1.5; // 上限超えたら適当に
+                    }
+                }
+            }
+
+            document.getElementById('plant-icon').textContent = currentLevel.icon;
+            document.getElementById('garden-message').textContent = `Lv.${Math.floor(totalDone/5)+1} ${currentLevel.title}`;
+            document.getElementById('total-count').textContent = totalDone;
+
+            // プログレスバー（前のレベルからの進捗率）
+            // 簡易的に 0〜nextThreshold で計算
+            const progress = Math.min(100, (totalDone / nextThreshold) * 100);
+            document.getElementById('exp-bar').style.width = `${progress}%`;
+        }
+
+        // 5. データ更新処理
+        async function toggleHabit(id) {
+            const habit = habitsData.find(h => h.id === id);
+            const isDone = habit.history.includes(todayStr);
+
+            // ① UIを即時更新（サクサク感）
+            if (isDone) {
+                // 削除
+                habit.history = habit.history.filter(d => d !== todayStr);
+            } else {
+                // 追加
+                habit.history.push(todayStr);
+                // 達成時のみ紙吹雪！
+                confetti({ particleCount: 60, spread: 70, origin: { y: 0.7 } });
+            }
+
+            renderAll();
+            updateGarden();
+
+            // ② 裏側で送信
             try {
                 await fetch(SCRIPT_URL, {
                     method: 'POST',
                     mode: 'no-cors',
-                    headers: { 'Content-Type': 'text/plain' },
-                    body: JSON.stringify({ id: habit.id, done: habit.done })
+                    body: JSON.stringify({ 
+                        id: habit.id, 
+                        date: todayStr, 
+                        done: !isDone // 反転させた結果を送る
+                    })
                 });
-            } catch (error) {
-                console.error("Save Error", error);
-                // エラー時は本当は戻すべきだが、UX優先でスルー（次回ロードで整合性取れる）
+            } catch (e) {
+                console.error("Save Error", e);
+                // エラー時はロールバックしても良いですが、今回は省略
             }
         }
 
-        // 紙吹雪エフェクト
-        function triggerConfetti() {
-            var duration = 3 * 1000;
-            var animationEnd = Date.now() + duration;
-            var defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 };
-
-            var interval = setInterval(function() {
-                var timeLeft = animationEnd - Date.now();
-
-                if (timeLeft <= 0) {
-                    return clearInterval(interval);
-                }
-
-                var particleCount = 50 * (timeLeft / duration);
-                confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } }));
-                confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } }));
-            }, 250);
-        }
-
-        function randomInRange(min, max) {
-            return Math.random() * (max - min) + min;
-        }
-
+        // 開始
         fetchHabits();
     </script>
 </body>
