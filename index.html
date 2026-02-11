@@ -233,16 +233,25 @@
             const goal = habit.goal || 0;
             const isDoneToday = habit.history.includes(todayStr);
             const levelInfo = getLevelInfo(count);
+            
+            // ★追加: ストリーク計算
+            const streak = calculateStreak(habit.history);
+            
             let percent = 0;
             let statusText = `累計 ${count} 日`;
             if (goal > 0) {
                 percent = Math.min(100, (count / goal) * 100);
                 statusText = `${count} / ${goal} 日達成 (${Math.round(percent)}%)`;
             }
+
+            // ★変更: HTML構造（ストリーク表示を追加）
             page.innerHTML = `
                 <div class="plant-area">
                     <div class="plant-icon">${levelInfo.icon}</div>
                     <div class="habit-level">${levelInfo.title}</div>
+                    <div style="font-size:12px; color:#ff9500; font-weight:bold; margin-top:4px;">
+                        ${streak > 1 ? `🔥 ${streak}日連続中!` : ' '}
+                    </div>
                 </div>
                 <div class="progress-bar-container">
                     <div class="progress-bar-fill" style="width: ${percent}%;"></div>
@@ -251,7 +260,7 @@
                 <div class="action-row">
                     <div class="icon-btn" onclick="openEditModal(${index})">⚙️</div>
                     <button class="check-btn ${isDoneToday ? 'checked' : ''}" 
-                            onclick="updateHabit('${habit.id}', '${todayStr}', ${index})">
+                            onclick="triggerVibrate(); updateHabit('${habit.id}', '${todayStr}', ${index})">
                         ${isDoneToday ? '✔' : '+'}
                     </button>
                     <div class="icon-btn" style="opacity:0; pointer-events:none;"></div>
@@ -259,6 +268,13 @@
             `;
             page.appendChild(createCalendar(habit, index));
             return page;
+        }
+
+        // ★追加: バイブレーション関数（Android等は振動、iOSは対応していれば振動）
+        function triggerVibrate() {
+            if (navigator.vibrate) {
+                navigator.vibrate(10); // 軽い振動
+            }
         }
 
         function createCalendar(habit, index) {
