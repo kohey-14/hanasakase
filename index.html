@@ -72,6 +72,7 @@
             font-size: 80px; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.1)); margin-bottom: 10px;
         }
         .habit-level { font-size: 13px; color: var(--text-sub); font-weight: bold; }
+        .streak-info { font-size: 12px; color: #ff9500; font-weight: bold; margin-top: 4px; height: 1.2em; }
 
         /* 進捗バー */
         .progress-bar-container {
@@ -108,6 +109,7 @@
             background: var(--primary); border-color: var(--primary); color: white;
             box-shadow: 0 5px 20px rgba(52, 199, 89, 0.4);
         }
+        .check-btn:active { transform: scale(0.95); }
 
         /* カレンダー */
         .calendar-card {
@@ -204,6 +206,58 @@
             }
         }
 
+        function calculateStreak(history) {
+            if (!history || history.length === 0) return 0;
+            const sortedDates = [...history].sort((a, b) => new Date(b) - new Date(a));
+            const today = new Date().toISOString().split('T')[0];
+            const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+            
+            if (sortedDates[0] !== today && sortedDates[0] !== yesterday) return 0;
+
+            let streak = 0;
+            let checkDate = new Date(sortedDates[0]);
+            
+            // 履歴の最新が今日なら今日から、昨日なら昨日からカウント開始
+            // 配列はソート済みなので、連続しているかチェック
+            let current = new Date(checkDate);
+            
+            for (const dateStr of sortedDates) {
+                const d = new Date(dateStr);
+                // 日付の差分を計算（ミリ秒 -> 日）
+                const diffTime = Math.abs(current - d);
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+                
+                // 初回ループは必ず差分0
+                if (diffDays <= 1) { // 連続している（0日差または1日差）
+                    if (diffDays === 1) streak++; // 1日差ならストリーク加算
+                    else if (streak === 0) streak = 1; // 初回カウント
+                    current = d; // 基準日を更新
+                } else {
+                    break; // 連続が途切れたら終了
+                }
+            }
+            
+            // 簡易ロジック：履歴を全部見て、1日ずつ遡って存在するかチェックする方が確実
+            // 再実装（より堅牢なロジック）
+            let verifiedStreak = 0;
+            let targetDate = new Date();
+            // 今日チェックしていなければ昨日から検証
+            if (!history.includes(todayStr)) {
+                targetDate.setDate(targetDate.getDate() - 1);
+            }
+            
+            while (true) {
+                const dateString = targetDate.toISOString().split('T')[0];
+                if (history.includes(dateString)) {
+                    verifiedStreak++;
+                    targetDate.setDate(targetDate.getDate() - 1);
+                } else {
+                    break;
+                }
+            }
+            return verifiedStreak;
+        }
+
         function renderApp() {
             tabList.innerHTML = '';
             contentArea.innerHTML = '';
@@ -233,25 +287,22 @@
             const goal = habit.goal || 0;
             const isDoneToday = habit.history.includes(todayStr);
             const levelInfo = getLevelInfo(count);
-            
-            // ★追加: ストリーク計算
             const streak = calculateStreak(habit.history);
-            
+
             let percent = 0;
             let statusText = `累計 ${count} 日`;
             if (goal > 0) {
                 percent = Math.min(100, (count / goal) * 100);
                 statusText = `${count} / ${goal} 日達成 (${Math.round(percent)}%)`;
             }
+            
+            let streakHtml = streak > 1 ? `🔥 ${streak}日連続中!` : '';
 
-            // ★変更: HTML構造（ストリーク表示を追加）
             page.innerHTML = `
                 <div class="plant-area">
                     <div class="plant-icon">${levelInfo.icon}</div>
                     <div class="habit-level">${levelInfo.title}</div>
-                    <div style="font-size:12px; color:#ff9500; font-weight:bold; margin-top:4px;">
-                        ${streak > 1 ? `🔥 ${streak}日連続中!` : ' '}
-                    </div>
+                    <div class="streak-info">${streakHtml}</div>
                 </div>
                 <div class="progress-bar-container">
                     <div class="progress-bar-fill" style="width: ${percent}%;"></div>
@@ -268,13 +319,6 @@
             `;
             page.appendChild(createCalendar(habit, index));
             return page;
-        }
-
-        // ★追加: バイブレーション関数（Android等は振動、iOSは対応していれば振動）
-        function triggerVibrate() {
-            if (navigator.vibrate) {
-                navigator.vibrate(10); // 軽い振動
-            }
         }
 
         function createCalendar(habit, index) {
@@ -306,6 +350,12 @@
             document.getElementById(`tab-${index}`).classList.add('active');
             document.querySelectorAll('.habit-page').forEach(p => p.classList.remove('active'));
             document.getElementById(`page-${index}`).classList.add('active');
+        }
+
+        function triggerVibrate() {
+            if (navigator.vibrate) {
+                navigator.vibrate(15);
+            }
         }
 
         async function updateHabit(id, dateStr, index) {
