@@ -43,9 +43,31 @@
             overscroll-behavior-y: none;
         }
 
+        /* ログイン画面 */
+        #login-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--bg-color); z-index: 9999;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+        }
+        .login-btn {
+            background: #4285F4; color: white; padding: 12px 24px;
+            border-radius: 24px; font-weight: bold; border: none; font-size: 16px;
+            box-shadow: 0 4px 12px rgba(66, 133, 244, 0.3); cursor: pointer;
+            display: flex; align-items: center; gap: 10px;
+        }
+
+        /* ユーザーヘッダー */
+        #user-header {
+            display: none; justify-content: space-between; align-items: center;
+            padding: 15px 20px 0; background: var(--card-bg);
+        }
+        #user-info { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-sub); }
+        #user-avatar { width: 24px; height: 24px; border-radius: 50%; }
+        .logout-btn { font-size: 11px; color: var(--danger); background: none; border: 1px solid var(--border); padding: 4px 8px; border-radius: 12px; cursor: pointer; }
+
         /* ヘッダー & タブ */
         .tab-scroll-container {
-            background: var(--card-bg); padding: 50px 0 10px;
+            background: var(--card-bg); padding: 20px 0 10px; /* 調整 */
             border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100;
         }
         .tab-list { display: flex; overflow-x: auto; padding: 0 20px; gap: 12px; scrollbar-width: none; }
@@ -64,6 +86,7 @@
         .tab-item.add-tab { color: var(--primary); font-size: 16px; padding: 8px 16px; }
 
         /* コンテンツ */
+        #app-container { display: none; flex: 1; flex-direction: column; overflow: hidden; } /* コンテナ追加 */
         #content-area { flex: 1; padding: 20px; overflow-y: auto; position: relative; }
         
         .habit-page { display: none; flex-direction: column; align-items: center; width: 100%; }
@@ -132,15 +155,13 @@
         }
         .check-btn.animating { animation: rubberBand 0.5s linear; }
 
-        /* 通知用グローアニメーション */
+        /* 通知用グロー */
         @keyframes pulseRed {
             0% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.7); border-color: var(--danger); color: var(--danger); }
             70% { box-shadow: 0 0 0 6px rgba(255, 59, 48, 0); border-color: var(--danger); color: var(--danger); }
             100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); border-color: var(--danger); color: var(--danger); }
         }
-        .icon-btn.alert-glow {
-            animation: pulseRed 2s infinite;
-        }
+        .icon-btn.alert-glow { animation: pulseRed 2s infinite; }
 
         /* カレンダー */
         .calendar-card {
@@ -200,11 +221,28 @@
     </style>
 </head>
 <body>
-    <div class="tab-scroll-container">
-        <div class="tab-list" id="tab-list"></div>
+    <div id="login-screen">
+        <div class="plant-icon" style="font-size:100px;">🌱</div>
+        <h2 style="margin-bottom:30px;">Habit Focus Pro</h2>
+        <button id="google-login-btn" class="login-btn">
+            Googleで始める
+        </button>
     </div>
-    <div id="content-area">
-        <div id="loading">読み込み中...</div>
+
+    <div id="app-container">
+        <div id="user-header">
+            <div id="user-info">
+                <img id="user-avatar" src="" alt="">
+                <span id="user-name"></span>
+            </div>
+            <button class="logout-btn" id="logout-btn">ログアウト</button>
+        </div>
+        <div class="tab-scroll-container">
+            <div class="tab-list" id="tab-list"></div>
+        </div>
+        <div id="content-area">
+            <div id="loading">読み込み中...</div>
+        </div>
     </div>
 
     <div id="edit-modal" class="modal-overlay">
@@ -245,15 +283,117 @@
         </div>
     </div>
 
-    <script>
-        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby-gjPZTKo2-9F8IpCksFjn-BkpC6yPYv0eHOgyM1ZollaZAc8E1K_agL-HvvP243be/exec";
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
+        // ★★★ あなたのFirebase Config ★★★
+        const firebaseConfig = {
+            apiKey: "AIzaSyAmgUKoS263PQ8znkQX_Yq2o_9Sbl6L8GU",
+            authDomain: "hanasakase-web.firebaseapp.com",
+            projectId: "hanasakase-web",
+            storageBucket: "hanasakase-web.firebasestorage.app",
+            messagingSenderId: "701962351554",
+            appId: "1:701962351554:web:f024ffe47b3d67cfb81c5b"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const provider = new GoogleAuthProvider();
+
+        // 状態変数
+        let currentUser = null;
+        let habitsData = [];
+        let editIndex = -1; // indexではなくIDで管理するように変更するが、便宜上配列indexも使う
+        let calendarStates = {};
+        const todayStr = new Date().toISOString().split('T')[0];
+        
+        // UI要素
+        const loginScreen = document.getElementById('login-screen');
+        const appContainer = document.getElementById('app-container');
+        const userHeader = document.getElementById('user-header');
+        const userNameSpan = document.getElementById('user-name');
+        const userAvatarImg = document.getElementById('user-avatar');
+        
+        // ログイン処理
+        document.getElementById('google-login-btn').addEventListener('click', () => {
+            signInWithPopup(auth, provider).catch(error => alert(error.message));
+        });
+
+        // ログアウト処理
+        document.getElementById('logout-btn').addEventListener('click', () => {
+            if(confirm("ログアウトしますか？")) signOut(auth);
+        });
+
+        // 認証状態監視
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUser = user;
+                loginScreen.style.display = 'none';
+                appContainer.style.display = 'flex';
+                userHeader.style.display = 'flex';
+                userNameSpan.textContent = user.displayName;
+                userAvatarImg.src = user.photoURL;
+                subscribeToHabits(); // データ監視開始
+            } else {
+                currentUser = null;
+                loginScreen.style.display = 'flex';
+                appContainer.style.display = 'none';
+                habitsData = [];
+            }
+        });
+
+        // ★Firestoreリアルタイム監視
+        let unsubscribe = null;
+        function subscribeToHabits() {
+            if (unsubscribe) unsubscribe();
+            const q = query(collection(db, "users", currentUser.uid, "habits"), orderBy("createdAt", "asc"));
+            
+            unsubscribe = onSnapshot(q, (snapshot) => {
+                habitsData = [];
+                snapshot.forEach((doc) => {
+                    habitsData.push({ id: doc.id, ...doc.data() });
+                });
+                
+                // データ読み込み完了後の描画
+                document.getElementById('loading').style.display = 'none';
+                renderApp();
+                
+                // 初回のみタブをセット（ただしアクティブなタブがあれば維持したい）
+                const activeTab = document.querySelector('.tab-item.active');
+                if(!activeTab && habitsData.length > 0) {
+                     // アーカイブされていない最初の項目へ
+                     const activeHabits = habitsData.filter(h => h.archived !== true);
+                     if(activeHabits.length > 0) switchTab(activeHabits[0].id);
+                }
+            });
+        }
+
+        // --- 以下、ロジック（Firebase用に調整） ---
+
+        // DBへの追加・更新・削除ラッパー
+        async function addHabitToDB(data) {
+            await addDoc(collection(db, "users", currentUser.uid, "habits"), {
+                ...data,
+                createdAt: new Date().toISOString()
+            });
+        }
+        async function updateHabitInDB(id, data) {
+            const habitRef = doc(db, "users", currentUser.uid, "habits", id);
+            await updateDoc(habitRef, data);
+        }
+        async function deleteHabitFromDB(id) {
+            await deleteDoc(doc(db, "users", currentUser.uid, "habits", id));
+        }
+
+
+        // --- UI Logic (Adapted) ---
         const tabList = document.getElementById('tab-list');
         const contentArea = document.getElementById('content-area');
-        const todayStr = new Date().toISOString().split('T')[0];
-        let habitsData = []; 
-        let editIndex = -1;
-        let calendarStates = {};
+        
         let touchStartX = 0; let touchStartY = 0;
 
         const plantDefinitions = {
@@ -275,168 +415,75 @@
             { t: 100, title: "Legend" }
         ];
 
-        // --- スワイプ処理 ---
+        // グローバル関数として登録（HTMLから呼ぶため）
+        window.switchTab = function(tabId, direction = null) {
+            document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+            const tabElem = document.getElementById(`tab-${tabId}`);
+            if (!tabElem) return; 
+            tabElem.classList.add('active');
+            tabElem.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+            document.querySelectorAll('.habit-page').forEach(p => {
+                p.classList.remove('active', 'slide-left', 'slide-right');
+            });
+            const newPage = document.getElementById(`page-${tabId}`);
+            if (newPage) {
+                newPage.classList.add('active');
+                if (direction === 'next') newPage.classList.add('slide-left');
+                else if (direction === 'prev') newPage.classList.add('slide-right');
+            }
+        };
+
+        window.openAddModal = function() {
+            editIndex = -1; // 新規
+            document.getElementById('modal-title').textContent = "新しい習慣";
+            document.getElementById('habit-name-input').value = "";
+            document.getElementById('habit-goal-input').value = "";
+            document.getElementById('delete-area').style.display = 'none';
+            document.getElementById('edit-modal').classList.add('open');
+        };
+
+        window.openEditModal = function(id) {
+            const habit = habitsData.find(h => h.id == id);
+            editIndex = id; // IDをセット
+            document.getElementById('modal-title').textContent = "設定を編集";
+            document.getElementById('habit-name-input').value = habit.name;
+            document.getElementById('habit-goal-input').value = habit.goal || "";
+            document.getElementById('delete-area').style.display = 'block';
+            document.getElementById('edit-modal').classList.add('open');
+        };
+
+        window.closeModal = function() {
+            document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('open'));
+        };
+
+        // スワイプ
         contentArea.addEventListener('touchstart', (e) => {
             touchStartX = e.changedTouches[0].screenX;
             touchStartY = e.changedTouches[0].screenY;
         }, {passive: true});
-
         contentArea.addEventListener('touchend', (e) => {
             const touchEndX = e.changedTouches[0].screenX;
             const touchEndY = e.changedTouches[0].screenY;
-            handleSwipe(touchStartX, touchStartY, touchEndX, touchEndY);
-        }, {passive: true});
-
-        function handleSwipe(sX, sY, eX, eY) {
-            const diffX = sX - eX;
-            const diffY = sY - eY;
+            const diffX = touchStartX - touchEndX;
+            const diffY = touchStartY - touchEndY;
+            
             if (Math.abs(diffX) > 50 && Math.abs(diffX) > Math.abs(diffY)) {
                 const activeHabits = habitsData.filter(h => h.archived !== true);
                 const activeTab = document.querySelector('.tab-item.active');
                 if(!activeTab) return;
-                
                 const activeIndex = activeHabits.findIndex((h, i) => `tab-${h.id}` === activeTab.id);
                 if (activeIndex === -1) return; 
 
-                if (diffX > 0) {
+                if (diffX > 0) { // Next
                     if (activeIndex < activeHabits.length - 1) switchTab(activeHabits[activeIndex + 1].id, 'next');
-                } else { 
+                    else if (habitsData.some(h => h.archived === true)) switchTab('archive', 'next'); 
+                } else { // Prev
                     if (activeIndex > 0) switchTab(activeHabits[activeIndex - 1].id, 'prev');
                 }
             }
-        }
+        }, {passive: true});
 
-        async function fetchHabits() {
-            try {
-                const res = await fetch(SCRIPT_URL);
-                if (!res.ok) throw new Error("Network Error");
-                let rawData = JSON.parse(await res.text());
-
-                // ★Local Storageからアーカイブ状態を取得
-                const localArchived = JSON.parse(localStorage.getItem('archivedHabits') || '[]');
-
-                // ★データレスキュー＆クリーニング
-                habitsData = rawData.map(h => {
-                        // データレスキュー：名前がない場合は仮の名前をつける
-                        if(!h.name || h.name.trim() === "") h.name = "📦 復元データ";
-                        
-                        // データ補完
-                        if(!h.startDate) h.startDate = new Date(h.id).toISOString().split('T')[0];
-                        
-                        // アーカイブ状態の適用
-                        if(localArchived.includes(h.id)) h.archived = true;
-                        
-                        return h;
-                    });
-
-                document.getElementById('loading').style.display = 'none';
-                renderApp();
-            } catch (e) {
-                console.error(e);
-                document.getElementById('loading').textContent = "読み込みエラー";
-            }
-        }
-
-        function getDates(habit) {
-            const start = new Date(habit.startDate);
-            const goalDays = habit.goal || 0;
-            let endStr = null;
-            if (goalDays > 0) {
-                const end = new Date(start);
-                end.setDate(start.getDate() + goalDays - 1);
-                endStr = end.toISOString().split('T')[0];
-            }
-            return { startStr: habit.startDate, endStr: endStr };
-        }
-
-        function checkDeadlineStatus(habit) {
-            if (habit.archived === true || !habit.goal) return 'normal';
-            const { endStr } = getDates(habit);
-            if (!endStr) return 'normal';
-            const now = new Date();
-            const currentHour = now.getHours();
-            const endDate = new Date(endStr);
-            const isPastDate = new Date(todayStr) > endDate;
-            const isDeadlineHour = (todayStr === endStr && currentHour >= 23);
-            if (isPastDate || isDeadlineHour) {
-                const count = habit.history.length;
-                return count >= habit.goal ? 'achieved' : 'failed';
-            }
-            return 'normal';
-        }
-
-        function handleCollectionClick(habitId) {
-            const habit = habitsData.find(h => h.id == habitId);
-            const status = checkDeadlineStatus(habit);
-            if (status !== 'normal') {
-                showResultModal(habit, status);
-            } else {
-                editIndex = habitsData.indexOf(habit);
-                document.getElementById('archive-menu-modal').classList.add('open');
-            }
-        }
-
-        function showResultModal(habit, status) {
-            const modal = document.getElementById('result-modal');
-            const icon = document.getElementById('result-icon');
-            const title = document.getElementById('result-title');
-            const msg = document.getElementById('result-msg');
-            const btns = document.getElementById('result-btns');
-            if (status === 'achieved') {
-                icon.textContent = "🎉";
-                title.textContent = "目標達成！";
-                msg.textContent = `おめでとうございます！\n「${habit.name}」をアーカイブ（殿堂入り）します。`;
-                btns.innerHTML = `<button class="btn btn-primary" onclick="archiveHabit(${habit.id}, 'achieved')">殿堂入りさせる</button>`;
-            } else {
-                icon.textContent = "😢";
-                title.textContent = "期限終了...";
-                msg.textContent = `「${habit.name}」の終了予定日を過ぎました。\n目標達成には届きませんでした。`;
-                btns.innerHTML = `
-                    <button class="btn btn-primary" onclick="resetHabit(${habit.id})">心機一転リセット</button>
-                    <button class="btn btn-cancel" onclick="archiveHabit(${habit.id}, 'failed')">未達成で記録</button>
-                `;
-            }
-            modal.classList.add('open');
-        }
-
-        async function archiveHabit(id, status) {
-            const habit = habitsData.find(h => h.id == id);
-            habit.archived = true;
-            habit.result = status;
-            
-            // ★Local Storageに保存
-            const localArchived = JSON.parse(localStorage.getItem('archivedHabits') || '[]');
-            if(!localArchived.includes(id)) {
-                localArchived.push(id);
-                localStorage.setItem('archivedHabits', JSON.stringify(localArchived));
-            }
-
-            closeModal();
-            renderApp();
-            
-            const activeHabits = habitsData.filter(h => h.archived !== true);
-            if(activeHabits.length > 0) switchTab(activeHabits[0].id);
-            else switchTab('archive');
-
-            await postData({ action: 'edit', id: habit.id, archived: true, result: status });
-        }
-
-        async function resetHabit(id) {
-            const habit = habitsData.find(h => h.id == id);
-            habit.startDate = todayStr;
-            habit.history = []; 
-            habit.archived = false;
-
-            // ★Local Storageから削除
-            const localArchived = JSON.parse(localStorage.getItem('archivedHabits') || '[]');
-            const newArchived = localArchived.filter(aid => aid != id);
-            localStorage.setItem('archivedHabits', JSON.stringify(newArchived));
-
-            closeModal();
-            renderApp();
-            await postData({ action: 'edit', id: habit.id, startDate: todayStr, history: [], archived: false });
-        }
-
+        // 描画
         function renderApp() {
             tabList.innerHTML = '';
             contentArea.innerHTML = '';
@@ -446,14 +493,20 @@
 
             activeHabits.forEach((habit, index) => {
                 const tab = document.createElement('div');
-                tab.className = `tab-item ${index === 0 ? 'active' : ''}`;
+                // アクティブ判定（現在表示中のページがあればそれを維持）
+                const currentActive = document.querySelector('.habit-page.active');
+                let isActive = false;
+                if(currentActive && currentActive.id === `page-${habit.id}`) isActive = true;
+                else if(!currentActive && index === 0) isActive = true;
+
+                tab.className = `tab-item ${isActive ? 'active' : ''}`;
                 tab.id = `tab-${habit.id}`;
                 tab.textContent = habit.name;
                 tab.onclick = () => switchTab(habit.id);
                 tabList.appendChild(tab);
                 
                 const page = createHabitPage(habit);
-                if (index === 0) page.classList.add('active');
+                if (isActive) page.classList.add('active');
                 contentArea.appendChild(page);
             });
 
@@ -469,9 +522,12 @@
                 arcTab.id = 'tab-archive';
                 arcTab.textContent = '📦';
                 arcTab.onclick = () => switchTab('archive');
+                // アーカイブが表示中だった場合
+                if(document.querySelector('#page-archive.active')) arcTab.classList.add('active');
                 tabList.appendChild(arcTab);
 
                 const arcPage = createArchivePage(archivedHabits);
+                if(document.querySelector('#page-archive.active')) arcPage.classList.add('active');
                 contentArea.appendChild(arcPage);
             }
         }
@@ -480,9 +536,9 @@
             const page = document.createElement('div');
             page.className = 'habit-page';
             page.id = `page-${habit.id}`;
-            const count = habit.history.length;
+            const count = habit.history ? habit.history.length : 0;
             const goal = habit.goal || 0;
-            const isDoneToday = habit.history.includes(todayStr);
+            const isDoneToday = habit.history && habit.history.includes(todayStr);
             const levelInfo = getLevelInfo(count, habit.type);
             const deadlineStatus = checkDeadlineStatus(habit);
             const alertClass = deadlineStatus !== 'normal' ? 'alert-glow' : '';
@@ -510,47 +566,16 @@
                 </div>
                 <div class="goal-status">${statusText}</div>
                 <div class="action-row">
-                    <div class="icon-btn" onclick="openEditModal(${habit.id})">⚙️</div>
+                    <div class="icon-btn" onclick="openEditModal('${habit.id}')">⚙️</div>
                     <button class="check-btn ${isDoneToday ? 'checked' : ''}" 
                             onclick="updateHabit('${habit.id}', '${todayStr}')">
                         ${isDoneToday ? '✔' : '+'}
                     </button>
-                    <div class="icon-btn ${alertClass}" onclick="handleCollectionClick(${habit.id})">📦</div>
+                    <div class="icon-btn ${alertClass}" onclick="handleCollectionClick('${habit.id}')">📦</div>
                 </div>
             `;
             
             page.appendChild(createCalendar(habit));
-            return page;
-        }
-
-        function createArchivePage(list) {
-            const page = document.createElement('div');
-            page.className = 'habit-page';
-            page.id = 'page-archive';
-            page.style.paddingTop = '20px';
-            const title = document.createElement('h3');
-            title.textContent = "殿堂入り (アーカイブ)";
-            title.style.marginTop = "0";
-            page.appendChild(title);
-
-            list.forEach(h => {
-                const div = document.createElement('div');
-                div.className = 'calendar-card';
-                div.style.marginBottom = '15px';
-                div.style.textAlign = 'left';
-                let status = '';
-                if(h.result === 'achieved') status = '🏆 達成';
-                else if(h.result === 'failed') status = '🔚 終了';
-                else status = '⏸ 中断'; 
-                div.innerHTML = `
-                    <div style="font-weight:bold; margin-bottom:5px;">${h.name}</div>
-                    <div style="font-size:12px; color:var(--text-sub);">
-                        ${status} (${h.history.length}日) <br>
-                        開始: ${h.startDate}
-                    </div>
-                `;
-                page.appendChild(div);
-            });
             return page;
         }
 
@@ -566,9 +591,9 @@
             const header = document.createElement('div');
             header.className = 'calendar-header';
             header.innerHTML = `
-                <div class="cal-nav" onclick="changeMonth(${habit.id}, -1)">◀︎</div>
+                <div class="cal-nav" onclick="changeMonth('${habit.id}', -1)">◀︎</div>
                 <div>${year}年 ${month + 1}月</div>
-                <div class="cal-nav" onclick="changeMonth(${habit.id}, 1)">▶︎</div>
+                <div class="cal-nav" onclick="changeMonth('${habit.id}', 1)">▶︎</div>
             `;
             wrapper.appendChild(header);
 
@@ -600,7 +625,7 @@
                 cell.textContent = d;
                 const dateStr = `${year}-${(month+1).toString().padStart(2,'0')}-${d.toString().padStart(2,'0')}`;
                 
-                if (habit.history.includes(dateStr)) cell.classList.add('done');
+                if (habit.history && habit.history.includes(dateStr)) cell.classList.add('done');
                 if (dateStr === todayStr) cell.classList.add('today');
                 if (dateStr === startStr) cell.classList.add('start-date');
                 if (dateStr === endStr) cell.classList.add('end-date');
@@ -616,7 +641,38 @@
             return wrapper;
         }
 
-        function changeMonth(habitId, offset) {
+        function createArchivePage(list) {
+            const page = document.createElement('div');
+            page.className = 'habit-page';
+            page.id = 'page-archive';
+            page.style.paddingTop = '20px';
+            const title = document.createElement('h3');
+            title.textContent = "殿堂入り (アーカイブ)";
+            title.style.marginTop = "0";
+            page.appendChild(title);
+
+            list.forEach(h => {
+                const div = document.createElement('div');
+                div.className = 'calendar-card';
+                div.style.marginBottom = '15px';
+                div.style.textAlign = 'left';
+                let status = '';
+                if(h.result === 'achieved') status = '🏆 達成';
+                else if(h.result === 'failed') status = '🔚 終了';
+                else status = '⏸ 中断'; 
+                div.innerHTML = `
+                    <div style="font-weight:bold; margin-bottom:5px;">${h.name}</div>
+                    <div style="font-size:12px; color:var(--text-sub);">
+                        ${status} (${h.history ? h.history.length : 0}日) <br>
+                        開始: ${h.startDate}
+                    </div>
+                `;
+                page.appendChild(div);
+            });
+            return page;
+        }
+
+        window.changeMonth = function(habitId, offset) {
             const state = calendarStates[habitId];
             let newMonth = state.month + offset;
             let newYear = state.year;
@@ -629,21 +685,154 @@
             oldWrapper.parentNode.replaceChild(newWrapper, oldWrapper);
         }
 
-        function switchTab(tabId, direction = null) {
-            document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
-            const tabElem = document.getElementById(`tab-${tabId}`);
-            if (!tabElem) return; 
-            tabElem.classList.add('active');
-            tabElem.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-            document.querySelectorAll('.habit-page').forEach(p => {
-                p.classList.remove('active', 'slide-left', 'slide-right');
-            });
-            const newPage = document.getElementById(`page-${tabId}`);
-            if (newPage) {
-                newPage.classList.add('active');
-                if (direction === 'next') newPage.classList.add('slide-left');
-                else if (direction === 'prev') newPage.classList.add('slide-right');
+        window.updateHabit = function(id, dateStr) {
+            const habit = habitsData.find(h => h.id == id);
+            let history = habit.history || [];
+            const isDone = history.includes(dateStr);
+            
+            // アニメーション
+            const btn = document.querySelector(`#page-${id} .check-btn`);
+            if(btn && dateStr === todayStr) {
+                btn.classList.remove('animating'); void btn.offsetWidth; btn.classList.add('animating');
             }
+
+            let newHistory;
+            if (isDone) {
+                newHistory = history.filter(d => d !== dateStr);
+            } else {
+                newHistory = [...history, dateStr];
+                if(habit.goal > 0 && newHistory.length === habit.goal && dateStr === todayStr) {
+                     confetti({ particleCount: 150, spread: 100, origin: { y: 0.6 } });
+                     alert("🎉 目標達成おめでとうございます！ 🎉");
+                } else if(dateStr === todayStr) {
+                     confetti({ particleCount: 40, spread: 60, origin: { y: 0.6 } });
+                }
+            }
+            
+            // Firebase更新
+            updateHabitInDB(id, { history: newHistory });
+        }
+
+        // 保存ボタン
+        document.getElementById('save-btn').onclick = async () => {
+            const name = document.getElementById('habit-name-input').value.trim();
+            const goal = parseInt(document.getElementById('habit-goal-input').value) || 0;
+            if(!name) return;
+            closeModal();
+
+            if(editIndex === -1) { // 新規
+                const plantKeys = Object.keys(plantDefinitions);
+                const randomType = plantKeys[Math.floor(Math.random() * plantKeys.length)];
+                await addHabitToDB({
+                    name: name,
+                    goal: goal,
+                    type: randomType,
+                    startDate: todayStr,
+                    history: [],
+                    archived: false
+                });
+                
+                setTimeout(() => {
+                    const plantName = plantDefinitions[randomType].name;
+                    alert(`🌱 新しい種を植えました！\n【${plantName}】が育ちます。`);
+                }, 300);
+            } else { // 編集
+                await updateHabitInDB(editIndex, { name: name, goal: goal });
+            }
+        };
+
+        // 削除ボタン
+        document.getElementById('delete-btn').onclick = async () => {
+            if(!confirm("本当に削除しますか？\n（履歴も完全に消えます）")) return;
+            const habitId = editIndex;
+            closeModal();
+            await deleteHabitFromDB(habitId);
+        };
+
+        // 集荷関連
+        window.handleCollectionClick = function(habitId) {
+            const habit = habitsData.find(h => h.id == habitId);
+            const status = checkDeadlineStatus(habit);
+            if (status !== 'normal') {
+                showResultModal(habit, status);
+            } else {
+                editIndex = habitId;
+                document.getElementById('archive-menu-modal').classList.add('open');
+            }
+        };
+
+        window.showResultModal = function(habit, status) {
+            const modal = document.getElementById('result-modal');
+            const icon = document.getElementById('result-icon');
+            const title = document.getElementById('result-title');
+            const msg = document.getElementById('result-msg');
+            const btns = document.getElementById('result-btns');
+            if (status === 'achieved') {
+                icon.textContent = "🎉";
+                title.textContent = "目標達成！";
+                msg.textContent = `おめでとうございます！\n「${habit.name}」をアーカイブ（殿堂入り）します。`;
+                btns.innerHTML = `<button class="btn btn-primary" onclick="archiveHabit('${habit.id}', 'achieved')">殿堂入りさせる</button>`;
+            } else {
+                icon.textContent = "😢";
+                title.textContent = "期限終了...";
+                msg.textContent = `「${habit.name}」の終了予定日を過ぎました。\n目標達成には届きませんでした。`;
+                btns.innerHTML = `
+                    <button class="btn btn-primary" onclick="resetHabit('${habit.id}')">心機一転リセット</button>
+                    <button class="btn btn-cancel" onclick="archiveHabit('${habit.id}', 'failed')">未達成で記録</button>
+                `;
+            }
+            modal.classList.add('open');
+        }
+
+        window.archiveHabit = async function(id, status) {
+            closeModal();
+            await updateHabitInDB(id, { archived: true, result: status });
+        };
+
+        window.resetHabit = async function(id) {
+            closeModal();
+            await updateHabitInDB(id, { 
+                startDate: todayStr, 
+                history: [], 
+                archived: false,
+                result: null 
+            });
+        };
+
+        // manual archive
+        document.getElementById('manual-archive-btn').onclick = async () => {
+             if(!confirm("この習慣を中断してアーカイブしますか？")) return;
+             await archiveHabit(editIndex, 'suspended');
+        };
+
+        // Helper Functions
+        function getDates(habit) {
+            if(!habit.startDate) return { startStr: null, endStr: null };
+            const start = new Date(habit.startDate);
+            const goalDays = habit.goal || 0;
+            let endStr = null;
+            if (goalDays > 0) {
+                const end = new Date(start);
+                end.setDate(start.getDate() + goalDays - 1);
+                endStr = end.toISOString().split('T')[0];
+            }
+            return { startStr: habit.startDate, endStr: endStr };
+        }
+
+        function checkDeadlineStatus(habit) {
+            if (habit.archived === true || !habit.goal) return 'normal';
+            const { endStr } = getDates(habit);
+            if (!endStr) return 'normal';
+            const now = new Date();
+            const currentHour = now.getHours();
+            const endDate = new Date(endStr);
+            const isPastDate = new Date(todayStr) > endDate;
+            const isDeadlineHour = (todayStr === endStr && currentHour >= 23);
+            if (isPastDate || isDeadlineHour) {
+                const count = habit.history ? habit.history.length : 0;
+                return count >= habit.goal ? 'achieved' : 'failed';
+            }
+            return 'normal';
         }
 
         function getLevelInfo(count, habitType) {
@@ -660,130 +849,6 @@
                 plantName: plantDef.name
             };
         }
-
-        async function updateHabit(id, dateStr) {
-            const habit = habitsData.find(h => h.id == id);
-            const btn = document.querySelector(`#page-${id} .check-btn`);
-            if(btn && dateStr === todayStr) {
-                btn.classList.remove('animating'); void btn.offsetWidth; btn.classList.add('animating');
-            }
-
-            const isDone = habit.history.includes(dateStr);
-            if (isDone) habit.history = habit.history.filter(d => d !== dateStr);
-            else {
-                habit.history.push(dateStr);
-                if(habit.goal > 0 && habit.history.length === habit.goal && dateStr === todayStr) {
-                     confetti({ particleCount: 150, spread: 100, origin: { y: 0.6 } });
-                     alert("🎉 目標達成おめでとうございます！ 🎉");
-                } else if(dateStr === todayStr) {
-                     confetti({ particleCount: 40, spread: 60, origin: { y: 0.6 } });
-                }
-            }
-            
-            const oldWrapper = document.getElementById(`cal-wrapper-${id}`);
-            const newWrapper = createCalendar(habit);
-            oldWrapper.parentNode.replaceChild(newWrapper, oldWrapper);
-            
-            const page = document.getElementById(`page-${id}`);
-            const count = habit.history.length;
-            const goal = habit.goal || 0;
-            let percent = 0;
-            if (goal > 0) percent = Math.min(100, (count / goal) * 100);
-            
-            page.querySelector('.progress-bar-fill').style.width = `${percent}%`;
-            page.querySelector('.goal-status').textContent = 
-                goal > 0 ? `${count} / ${goal} 日達成 (${Math.round(percent)}%)` : `累計 ${count} 日`;
-
-            postData({ action: 'toggle', id: id, date: dateStr, done: !isDone });
-        }
-
-        const modal = document.getElementById('edit-modal');
-        const nameInput = document.getElementById('habit-name-input');
-        const goalInput = document.getElementById('habit-goal-input');
-        const modalTitle = document.getElementById('modal-title');
-        const deleteArea = document.getElementById('delete-area');
-
-        function openAddModal() {
-            editIndex = -1;
-            modalTitle.textContent = "新しい習慣";
-            nameInput.value = ""; goalInput.value = "";
-            deleteArea.style.display = 'none'; modal.classList.add('open');
-        }
-        function openEditModal(id) {
-            const habit = habitsData.find(h => h.id == id);
-            editIndex = habitsData.indexOf(habit);
-            modalTitle.textContent = "設定を編集";
-            nameInput.value = habit.name; goalInput.value = habit.goal || "";
-            deleteArea.style.display = 'block'; modal.classList.add('open');
-        }
-        
-        function closeModal() {
-            document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('open'));
-        }
-
-        document.getElementById('save-btn').onclick = async () => {
-            const name = nameInput.value.trim();
-            const goal = parseInt(goalInput.value) || 0;
-            if(!name) return;
-            closeModal();
-
-            if(editIndex === -1) {
-                const plantKeys = Object.keys(plantDefinitions);
-                const randomType = plantKeys[Math.floor(Math.random() * plantKeys.length)];
-                const tempId = Date.now();
-                const newHabit = { 
-                    id: tempId, name: name, history: [], goal: goal, 
-                    type: randomType, startDate: todayStr, archived: false 
-                };
-                habitsData.push(newHabit);
-                
-                renderApp(); switchTab(tempId);
-                setTimeout(() => {
-                    const plantName = plantDefinitions[randomType].name;
-                    alert(`🌱 新しい種を植えました！\n【${plantName}】が育ちます。`);
-                }, 300);
-
-                await postData({ action: 'add', name: name, goal: goal, type: randomType, startDate: todayStr });
-            } else {
-                const habit = habitsData[editIndex];
-                habit.name = name; habit.goal = goal;
-                renderApp(); switchTab(habit.id);
-                await postData({ action: 'edit', id: habit.id, name: name, goal: goal });
-            }
-        };
-
-        document.getElementById('manual-archive-btn').onclick = async () => {
-             if(!confirm("この習慣を中断してアーカイブしますか？\n（いつでも再開はできませんが履歴は残ります）")) return;
-             const habit = habitsData[editIndex];
-             await archiveHabit(habit.id, 'suspended'); 
-        };
-
-        document.getElementById('delete-btn').onclick = async () => {
-            if(!confirm("本当に削除しますか？\n（履歴も完全に消えます）")) return;
-            const habit = habitsData[editIndex];
-            
-            // ★Local Storageから削除
-            const localArchived = JSON.parse(localStorage.getItem('archivedHabits') || '[]');
-            const newArchived = localArchived.filter(aid => aid != habit.id);
-            localStorage.setItem('archivedHabits', JSON.stringify(newArchived));
-
-            habitsData.splice(editIndex, 1);
-            
-            renderApp();
-            const activeHabits = habitsData.filter(h => h.archived !== true);
-            if(activeHabits.length > 0) switchTab(activeHabits[0].id);
-            else openAddModal(); 
-
-            closeModal(); 
-            await postData({ action: 'delete', id: habit.id });
-        };
-
-        async function postData(payload) {
-            try { await fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) }); }
-            catch(e) { console.error(e); }
-        }
-
-        fetchHabits();
     </script>
 </body>
 </html>
