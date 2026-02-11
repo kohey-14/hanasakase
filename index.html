@@ -15,6 +15,7 @@
             --card-bg: #ffffff;
             --primary: #34c759; /* 緑色 */
             --danger: #ff3b30;
+            --warning: #ff9500; /* 中断用オレンジ */
             --highlight-start: #007aff;
             --highlight-end: #ff3b30;
             --text-main: #1c1c1e;
@@ -84,10 +85,6 @@
         .plant-icon:hover { transform: scale(1.1); }
         .habit-level { font-size: 13px; color: var(--text-sub); font-weight: bold; }
         .streak-info { font-size: 12px; color: #ff9500; font-weight: bold; margin-top: 4px; height: 1.2em; }
-        .archive-badge { 
-            background: #8e8e93; color: white; font-size: 10px; padding: 4px 8px; 
-            border-radius: 4px; margin-bottom: 5px; display: inline-block;
-        }
 
         /* 進捗バー */
         .progress-bar-container {
@@ -124,7 +121,6 @@
             background: var(--primary); border-color: var(--primary); color: white;
             box-shadow: 0 5px 20px rgba(52, 199, 89, 0.4);
         }
-        .check-btn.disabled { opacity: 0.5; cursor: default; pointer-events: none; }
         .check-btn:active { transform: scale(0.95); }
 
         @keyframes rubberBand {
@@ -190,6 +186,7 @@
         .btn { flex: 1; padding: 12px; border-radius: 12px; border: none; font-weight: bold; font-size: 14px; cursor: pointer; }
         .btn-cancel { background: var(--bg-color); color: var(--text-sub); }
         .btn-primary { background: var(--primary); color: white; }
+        .btn-warning { background: var(--warning); color: white; }
         .btn-danger { background: var(--danger); color: white; }
 
         #loading { text-align: center; padding-top: 100px; color: var(--text-sub); }
@@ -214,7 +211,9 @@
                 <button class="btn btn-cancel" onclick="closeModal()">キャンセル</button>
                 <button class="btn btn-primary" id="save-btn">保存</button>
             </div>
-            <div id="delete-area" style="margin-top:15px; display:none;">
+            
+            <div id="danger-area" style="margin-top:20px; display:none; border-top:1px solid var(--border); padding-top:15px;">
+                <button class="btn btn-warning" style="width:100%; margin-bottom:10px;" id="archive-btn">アーカイブ (中断)</button>
                 <button class="btn btn-danger" style="width:100%" id="delete-btn">削除</button>
             </div>
         </div>
@@ -225,8 +224,7 @@
             <h1 id="result-icon" style="font-size: 50px; margin:0;"></h1>
             <h3 id="result-title" style="margin: 10px 0;"></h3>
             <p id="result-msg" style="font-size:14px; color:var(--text-sub);"></p>
-            <div class="modal-btns" id="result-btns">
-                </div>
+            <div class="modal-btns" id="result-btns"></div>
         </div>
     </div>
 
@@ -239,10 +237,7 @@
         const todayStr = new Date().toISOString().split('T')[0];
         let habitsData = []; 
         let editIndex = -1;
-        
-        // カレンダー表示月（各習慣ごとに管理）
-        let calendarStates = {}; // { habitId: { year: 2026, month: 1 } }
-
+        let calendarStates = {};
         let touchStartX = 0; let touchStartY = 0;
 
         const plantDefinitions = {
@@ -280,23 +275,17 @@
             const diffX = sX - eX;
             const diffY = sY - eY;
             if (Math.abs(diffX) > 50 && Math.abs(diffX) > Math.abs(diffY)) {
-                // アーカイブを除く表示中のリストで計算
                 const activeHabits = habitsData.filter(h => !h.archived);
                 const activeTab = document.querySelector('.tab-item.active');
                 if(!activeTab) return;
                 
-                // 現在のIDからインデックスを探す
-                const currentId = activeTab.id.replace('tab-', '');
-                // IDはユニークではないので（配列インデックスを使っている）、DOMから探す
                 const activeIndex = activeHabits.findIndex((h, i) => `tab-${h.id}` === activeTab.id);
+                if (activeIndex === -1) return; 
 
-                // アーカイブタブへの移動ロジックが必要だが、今回はシンプルに習慣間の移動のみ
-                if (activeIndex === -1) return; // アーカイブタブなどの場合
-
-                if (diffX > 0) { // 次へ
+                if (diffX > 0) {
                     if (activeIndex < activeHabits.length - 1) switchTab(activeHabits[activeIndex + 1].id, 'next');
-                    else if (habitsData.some(h => h.archived)) switchTab('archive', 'next'); // 次がアーカイブ
-                } else { // 前へ
+                    else if (habitsData.some(h => h.archived)) switchTab('archive', 'next'); 
+                } else { 
                     if (activeIndex > 0) switchTab(activeHabits[activeIndex - 1].id, 'prev');
                 }
             }
@@ -308,13 +297,12 @@
                 if (!res.ok) throw new Error("Network Error");
                 habitsData = JSON.parse(await res.text());
                 
-                // データ補正: startDateがない場合はIDから生成
                 habitsData.forEach(h => {
                     if(!h.startDate) h.startDate = new Date(h.id).toISOString().split('T')[0];
                 });
 
                 document.getElementById('loading').style.display = 'none';
-                checkDeadlines(); // 期限チェック
+                checkDeadlines(); 
                 renderApp();
             } catch (e) {
                 console.error(e);
@@ -327,7 +315,6 @@
             const goalDays = habit.goal || 0;
             let endStr = null;
             if (goalDays > 0) {
-                // 終了予定日 = 開始日 + (目標日数 - 1)日
                 const end = new Date(start);
                 end.setDate(start.getDate() + goalDays - 1);
                 endStr = end.toISOString().split('T')[0];
@@ -340,13 +327,12 @@
             const currentHour = now.getHours();
 
             habitsData.forEach(habit => {
-                if (habit.archived || !habit.goal) return; // 既にアーカイブ済みか目標なしはスキップ
+                if (habit.archived || !habit.goal) return; 
 
                 const { endStr } = getDates(habit);
                 if (!endStr) return;
 
                 const endDate = new Date(endStr);
-                // 判定基準: 今日の日付が終了日を超えている、または今日が終了日で23時を過ぎている
                 const isPastDate = new Date(todayStr) > endDate;
                 const isDeadlineHour = (todayStr === endStr && currentHour >= 23);
 
@@ -387,19 +373,21 @@
             const habit = habitsData.find(h => h.id == id);
             habit.archived = true;
             habit.result = status;
+            
+            // モーダルを閉じる
             document.getElementById('result-modal').classList.remove('open');
+            document.getElementById('edit-modal').classList.remove('open');
+            
             renderApp();
             await postData({ action: 'edit', id: habit.id, archived: true, result: status });
         }
 
         async function resetHabit(id) {
             const habit = habitsData.find(h => h.id == id);
-            habit.startDate = todayStr; // 開始日を今日に
-            habit.history = []; // 履歴リセット
-            // IDは変えない（変えると別物になるため）
+            habit.startDate = todayStr;
+            habit.history = []; 
             document.getElementById('result-modal').classList.remove('open');
             renderApp();
-            // 全データを送って更新
             await postData({ action: 'edit', id: habit.id, startDate: todayStr, history: [], archived: false });
         }
 
@@ -407,11 +395,9 @@
             tabList.innerHTML = '';
             contentArea.innerHTML = '';
 
-            // アクティブな習慣
             const activeHabits = habitsData.filter(h => !h.archived);
             const archivedHabits = habitsData.filter(h => h.archived);
 
-            // タブ生成
             activeHabits.forEach((habit, index) => {
                 const tab = document.createElement('div');
                 tab.className = `tab-item ${index === 0 ? 'active' : ''}`;
@@ -425,14 +411,12 @@
                 contentArea.appendChild(page);
             });
 
-            // 新規追加ボタン
             const addTab = document.createElement('div');
             addTab.className = 'tab-item add-tab';
             addTab.textContent = '＋';
             addTab.onclick = () => openAddModal();
             tabList.appendChild(addTab);
 
-            // アーカイブタブ（存在する場合）
             if (archivedHabits.length > 0) {
                 const arcTab = document.createElement('div');
                 arcTab.className = 'tab-item';
@@ -462,7 +446,6 @@
                 statusText = `${count} / ${goal} 日達成 (${Math.round(percent)}%)`;
             }
             
-            // カレンダー状態初期化
             if (!calendarStates[habit.id]) {
                 const now = new Date();
                 calendarStates[habit.id] = { year: now.getFullYear(), month: now.getMonth() };
@@ -503,7 +486,12 @@
                 div.className = 'calendar-card';
                 div.style.marginBottom = '15px';
                 div.style.textAlign = 'left';
-                const status = h.result === 'achieved' ? '🏆 達成' : '🔚 終了';
+                
+                let status = '';
+                if(h.result === 'achieved') status = '🏆 達成';
+                else if(h.result === 'failed') status = '🔚 終了';
+                else status = '⏸ 中断'; // manual archive
+
                 div.innerHTML = `
                     <div style="font-weight:bold; margin-bottom:5px;">${h.name}</div>
                     <div style="font-size:12px; color:var(--text-sub);">
@@ -588,7 +576,6 @@
             
             calendarStates[habitId] = { year: newYear, month: newMonth };
             
-            // カレンダー部分だけ再描画
             const habit = habitsData.find(h => h.id == habitId);
             const oldWrapper = document.getElementById(`cal-wrapper-${habitId}`);
             const newWrapper = createCalendar(habit);
@@ -630,8 +617,6 @@
 
         async function updateHabit(id, dateStr) {
             const habit = habitsData.find(h => h.id == id);
-            
-            // アニメーション
             const btn = document.querySelector(`#page-${id} .check-btn`);
             if(btn && dateStr === todayStr) {
                 btn.classList.remove('animating'); void btn.offsetWidth; btn.classList.add('animating');
@@ -649,12 +634,10 @@
                 }
             }
             
-            // カレンダー再描画（現在の月を維持）
             const oldWrapper = document.getElementById(`cal-wrapper-${id}`);
             const newWrapper = createCalendar(habit);
             oldWrapper.parentNode.replaceChild(newWrapper, oldWrapper);
             
-            // 進捗バー更新
             const page = document.getElementById(`page-${id}`);
             const count = habit.history.length;
             const goal = habit.goal || 0;
@@ -665,7 +648,6 @@
             page.querySelector('.goal-status').textContent = 
                 goal > 0 ? `${count} / ${goal} 日達成 (${Math.round(percent)}%)` : `累計 ${count} 日`;
 
-            // データ送信
             postData({ action: 'toggle', id: id, date: dateStr, done: !isDone });
         }
 
@@ -673,20 +655,20 @@
         const nameInput = document.getElementById('habit-name-input');
         const goalInput = document.getElementById('habit-goal-input');
         const modalTitle = document.getElementById('modal-title');
-        const deleteArea = document.getElementById('delete-area');
+        const dangerArea = document.getElementById('danger-area');
 
         function openAddModal() {
             editIndex = -1;
             modalTitle.textContent = "新しい習慣";
             nameInput.value = ""; goalInput.value = "";
-            deleteArea.style.display = 'none'; modal.classList.add('open');
+            dangerArea.style.display = 'none'; modal.classList.add('open');
         }
         function openEditModal(id) {
             const habit = habitsData.find(h => h.id == id);
-            editIndex = habitsData.indexOf(habit); // 配列のインデックス
+            editIndex = habitsData.indexOf(habit);
             modalTitle.textContent = "設定を編集";
             nameInput.value = habit.name; goalInput.value = habit.goal || "";
-            deleteArea.style.display = 'block'; modal.classList.add('open');
+            dangerArea.style.display = 'block'; modal.classList.add('open');
         }
         function closeModal() { modal.classList.remove('open'); }
 
@@ -706,9 +688,7 @@
                 };
                 habitsData.push(newHabit);
                 
-                renderApp(); 
-                switchTab(tempId);
-                
+                renderApp(); switchTab(tempId);
                 setTimeout(() => {
                     const plantName = plantDefinitions[randomType].name;
                     alert(`🌱 新しい種を植えました！\n【${plantName}】が育ちます。`);
@@ -723,8 +703,15 @@
             }
         };
 
+        // ▼ 手動アーカイブ（中断）
+        document.getElementById('archive-btn').onclick = async () => {
+             if(!confirm("この習慣を中断してアーカイブしますか？\n（いつでも再開はできませんが履歴は残ります）")) return;
+             const habit = habitsData[editIndex];
+             await archiveHabit(habit.id, 'suspended'); // 'suspended' ステータスでアーカイブ
+        };
+
         document.getElementById('delete-btn').onclick = async () => {
-            if(!confirm("削除しますか？")) return;
+            if(!confirm("本当に削除しますか？\n（履歴も完全に消えます）")) return;
             const habit = habitsData[editIndex];
             habitsData.splice(editIndex, 1);
             closeModal(); renderApp();
