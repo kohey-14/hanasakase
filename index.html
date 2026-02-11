@@ -15,7 +15,7 @@
             --card-bg: #ffffff;
             --primary: #34c759; /* 緑色 */
             --danger: #ff3b30;
-            --warning: #ff9500; /* 中断用オレンジ */
+            --warning: #ff9500;
             --highlight-start: #007aff;
             --highlight-end: #ff3b30;
             --text-main: #1c1c1e;
@@ -54,14 +54,9 @@
             white-space: nowrap; padding: 8px 16px; border-radius: 18px;
             background: var(--bg-color); color: var(--text-sub); font-size: 13px; font-weight: 600;
             transition: all 0.2s; cursor: pointer;
-            
-            /* ★ここが重要: 縮まないようにする */
-            flex-shrink: 0; 
-            text-align: center;
+            flex-shrink: 0; text-align: center;
         }
-        /* 名前がないタブを非表示にする（ドット対策） */
         .tab-item:empty { display: none; }
-        
         .tab-item.active {
             background: var(--text-main); color: var(--card-bg);
             box-shadow: 0 4px 10px rgba(0,0,0,0.2);
@@ -91,11 +86,6 @@
         }
         .plant-icon:hover { transform: scale(1.1); }
         .habit-level { font-size: 13px; color: var(--text-sub); font-weight: bold; }
-        .streak-info { font-size: 12px; color: #ff9500; font-weight: bold; margin-top: 4px; height: 1.2em; }
-        .archive-badge { 
-            background: #8e8e93; color: white; font-size: 10px; padding: 4px 8px; 
-            border-radius: 4px; margin-bottom: 5px; display: inline-block;
-        }
 
         /* 進捗バー */
         .progress-bar-container {
@@ -108,20 +98,22 @@
             height: 100%; background-color: var(--primary);
             width: 0%; transition: width 0.6s ease-out;
         }
-
         .goal-status {
             font-size: 14px; font-weight: bold; color: var(--text-main);
             margin-bottom: 25px; background: var(--card-bg); padding: 8px 16px;
             border-radius: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         }
 
-        /* アクション */
+        /* アクションエリア (設定 - チェック - 集荷) */
         .action-row { display: flex; gap: 20px; align-items: center; margin-bottom: 20px; }
+        
         .icon-btn {
             width: 44px; height: 44px; border-radius: 50%; background: var(--card-bg);
             color: var(--text-main); border: 1px solid var(--border);
             display: flex; align-items: center; justify-content: center; font-size: 20px; cursor: pointer;
+            position: relative;
         }
+        
         .check-btn {
             width: 72px; height: 72px; border-radius: 50%; border: 4px solid var(--border);
             background: var(--card-bg); display: flex; align-items: center; justify-content: center;
@@ -132,19 +124,23 @@
             background: var(--primary); border-color: var(--primary); color: white;
             box-shadow: 0 5px 20px rgba(52, 199, 89, 0.4);
         }
-        .check-btn.disabled { opacity: 0.5; cursor: default; pointer-events: none; }
         .check-btn:active { transform: scale(0.95); }
-
         @keyframes rubberBand {
-            0% { transform: scale(1); }
-            30% { transform: scale(1.25, 0.75); }
-            40% { transform: scale(0.75, 1.25); }
-            50% { transform: scale(1.15, 0.85); }
-            65% { transform: scale(0.95, 1.05); }
-            75% { transform: scale(1.05, 0.95); }
-            100% { transform: scale(1); }
+            0% { transform: scale(1); } 30% { transform: scale(1.25, 0.75); }
+            40% { transform: scale(0.75, 1.25); } 50% { transform: scale(1.15, 0.85); }
+            65% { transform: scale(0.95, 1.05); } 100% { transform: scale(1); }
         }
         .check-btn.animating { animation: rubberBand 0.5s linear; }
+
+        /* 通知用グローアニメーション */
+        @keyframes pulseRed {
+            0% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.7); border-color: var(--danger); color: var(--danger); }
+            70% { box-shadow: 0 0 0 6px rgba(255, 59, 48, 0); border-color: var(--danger); color: var(--danger); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); border-color: var(--danger); color: var(--danger); }
+        }
+        .icon-btn.alert-glow {
+            animation: pulseRed 2s infinite;
+        }
 
         /* カレンダー */
         .calendar-card {
@@ -154,7 +150,6 @@
             display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; font-weight: bold;
         }
         .cal-nav { cursor: pointer; padding: 5px 10px; color: var(--primary); font-size: 18px; }
-        
         .week-header {
             display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 8px;
         }
@@ -168,7 +163,6 @@
         .day-cell.today { background: var(--bg-color); border: 2px solid var(--text-main); font-weight: bold; }
         .day-cell.done { background: var(--primary); color: white; border: none; }
         
-        /* 開始日・終了日ハイライト */
         .day-cell.start-date { box-shadow: 0 0 0 2px var(--highlight-start) inset; }
         .day-cell.end-date { box-shadow: 0 0 0 2px var(--highlight-end) inset; color: var(--danger); font-weight:bold; }
         .day-cell.done.end-date { color: white; box-shadow: 0 0 0 2px white inset, 0 0 0 4px var(--highlight-end); }
@@ -194,12 +188,13 @@
         }
         label { display: block; text-align: left; font-size: 12px; color: var(--text-sub); margin-top: 10px; margin-left: 5px;}
         
-        .modal-btns { display: flex; gap: 10px; margin-top: 20px; }
-        .btn { flex: 1; padding: 12px; border-radius: 12px; border: none; font-weight: bold; font-size: 14px; cursor: pointer; }
+        .modal-btns { display: flex; gap: 10px; margin-top: 20px; flex-direction: column; }
+        .btn { width: 100%; padding: 12px; border-radius: 12px; border: none; font-weight: bold; font-size: 14px; cursor: pointer; margin-bottom: 5px; }
         .btn-cancel { background: var(--bg-color); color: var(--text-sub); }
         .btn-primary { background: var(--primary); color: white; }
         .btn-warning { background: var(--warning); color: white; }
         .btn-danger { background: var(--danger); color: white; }
+        .btn-row { display: flex; gap: 10px; width: 100%; }
 
         #loading { text-align: center; padding-top: 100px; color: var(--text-sub); }
     </style>
@@ -219,15 +214,25 @@
             <input type="text" id="habit-name-input" placeholder="例: 筋トレ">
             <label>目標日数 (0で目標なし)</label>
             <input type="number" id="habit-goal-input" placeholder="例: 30" min="0">
-            <div class="modal-btns">
+            <div class="btn-row" style="margin-top:20px;">
                 <button class="btn btn-cancel" onclick="closeModal()">キャンセル</button>
                 <button class="btn btn-primary" id="save-btn">保存</button>
             </div>
-            
-            <div id="danger-area" style="margin-top:20px; display:none; border-top:1px solid var(--border); padding-top:15px;">
-                <button class="btn btn-warning" style="width:100%; margin-bottom:10px;" id="archive-btn">アーカイブ (中断)</button>
-                <button class="btn btn-danger" style="width:100%" id="delete-btn">削除</button>
+            <div id="delete-area" style="margin-top:15px; display:none; border-top:1px solid var(--border); padding-top:15px;">
+                <button class="btn btn-danger" id="delete-btn">この習慣を削除</button>
             </div>
+        </div>
+    </div>
+
+    <div id="archive-menu-modal" class="modal-overlay">
+        <div class="modal-card">
+            <h3 style="margin-top:0;">集荷オプション</h3>
+            <p style="font-size:13px; color:var(--text-sub); margin-bottom:20px;">
+                この習慣をアーカイブへ移動、または過去の記録を確認します。
+            </p>
+            <button class="btn btn-warning" id="manual-archive-btn">📦 中断してアーカイブする</button>
+            <button class="btn btn-cancel" onclick="switchTab('archive'); closeModal();">🏆 殿堂入りリストを見る</button>
+            <button class="btn btn-cancel" style="margin-top:10px;" onclick="closeModal()">閉じる</button>
         </div>
     </div>
 
@@ -236,12 +241,11 @@
             <h1 id="result-icon" style="font-size: 50px; margin:0;"></h1>
             <h3 id="result-title" style="margin: 10px 0;"></h3>
             <p id="result-msg" style="font-size:14px; color:var(--text-sub);"></p>
-            <div class="modal-btns" id="result-btns"></div>
+            <div id="result-btns" style="margin-top:20px;"></div>
         </div>
     </div>
 
     <script>
-        // ↓↓↓ URLを書き換えてください ↓↓↓
         const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby-gjPZTKo2-9F8IpCksFjn-BkpC6yPYv0eHOgyM1ZollaZAc8E1K_agL-HvvP243be/exec";
 
         const tabList = document.getElementById('tab-list');
@@ -296,7 +300,6 @@
 
                 if (diffX > 0) {
                     if (activeIndex < activeHabits.length - 1) switchTab(activeHabits[activeIndex + 1].id, 'next');
-                    else if (habitsData.some(h => h.archived === true)) switchTab('archive', 'next'); 
                 } else { 
                     if (activeIndex > 0) switchTab(activeHabits[activeIndex - 1].id, 'prev');
                 }
@@ -309,14 +312,12 @@
                 if (!res.ok) throw new Error("Network Error");
                 habitsData = JSON.parse(await res.text());
                 
-                // データ補正
                 habitsData.forEach(h => {
                     if(!h.startDate) h.startDate = new Date(h.id).toISOString().split('T')[0];
                     if(!h.name || h.name.trim() === "") h.name = "無題";
                 });
 
                 document.getElementById('loading').style.display = 'none';
-                checkDeadlines(); 
                 renderApp();
             } catch (e) {
                 console.error(e);
@@ -336,37 +337,49 @@
             return { startStr: habit.startDate, endStr: endStr };
         }
 
-        function checkDeadlines() {
+        // 期限チェック（ステータスを返すだけ）
+        function checkDeadlineStatus(habit) {
+            if (habit.archived === true || !habit.goal) return 'normal';
+            
+            const { endStr } = getDates(habit);
+            if (!endStr) return 'normal';
+
             const now = new Date();
             const currentHour = now.getHours();
+            const endDate = new Date(endStr);
+            const isPastDate = new Date(todayStr) > endDate;
+            const isDeadlineHour = (todayStr === endStr && currentHour >= 23);
 
-            habitsData.forEach(habit => {
-                if (habit.archived === true || !habit.goal) return; 
-
-                const { endStr } = getDates(habit);
-                if (!endStr) return;
-
-                const endDate = new Date(endStr);
-                const isPastDate = new Date(todayStr) > endDate;
-                const isDeadlineHour = (todayStr === endStr && currentHour >= 23);
-
-                if (isPastDate || isDeadlineHour) {
-                    showResultModal(habit);
-                }
-            });
+            if (isPastDate || isDeadlineHour) {
+                const count = habit.history.length;
+                return count >= habit.goal ? 'achieved' : 'failed';
+            }
+            return 'normal';
         }
 
-        function showResultModal(habit) {
+        // 集荷ボタンクリック時の挙動
+        function handleCollectionClick(habitId) {
+            const habit = habitsData.find(h => h.id == habitId);
+            const status = checkDeadlineStatus(habit);
+
+            if (status !== 'normal') {
+                // 結果判定モーダルを表示
+                showResultModal(habit, status);
+            } else {
+                // 通常アーカイブメニューを表示
+                editIndex = habitsData.indexOf(habit); // 操作対象をセット
+                document.getElementById('archive-menu-modal').classList.add('open');
+            }
+        }
+
+        function showResultModal(habit, status) {
             const modal = document.getElementById('result-modal');
             const icon = document.getElementById('result-icon');
             const title = document.getElementById('result-title');
             const msg = document.getElementById('result-msg');
             const btns = document.getElementById('result-btns');
 
-            const count = habit.history.length;
-            const isAchieved = count >= habit.goal;
-
-            if (isAchieved) {
+            if (status === 'achieved') {
                 icon.textContent = "🎉";
                 title.textContent = "目標達成！";
                 msg.textContent = `おめでとうございます！\n「${habit.name}」をアーカイブ（殿堂入り）します。`;
@@ -388,17 +401,12 @@
             habit.archived = true;
             habit.result = status;
             
-            document.getElementById('result-modal').classList.remove('open');
-            document.getElementById('edit-modal').classList.remove('open');
-            
+            closeModal(); // 全モーダル閉じる
             renderApp();
             
             const activeHabits = habitsData.filter(h => h.archived !== true);
-            if(activeHabits.length > 0) {
-                switchTab(activeHabits[0].id);
-            } else if (habitsData.some(h => h.archived === true)) {
-                switchTab('archive');
-            }
+            if(activeHabits.length > 0) switchTab(activeHabits[0].id);
+            else switchTab('archive');
 
             await postData({ action: 'edit', id: habit.id, archived: true, result: status });
         }
@@ -407,7 +415,7 @@
             const habit = habitsData.find(h => h.id == id);
             habit.startDate = todayStr;
             habit.history = []; 
-            document.getElementById('result-modal').classList.remove('open');
+            closeModal();
             renderApp();
             await postData({ action: 'edit', id: habit.id, startDate: todayStr, history: [], archived: false });
         }
@@ -438,6 +446,7 @@
             addTab.onclick = () => openAddModal();
             tabList.appendChild(addTab);
 
+            // アーカイブタブ（常に生成するが表示はCSS等で制御可能、今回はシンプルに配置）
             if (archivedHabits.length > 0) {
                 const arcTab = document.createElement('div');
                 arcTab.className = 'tab-item';
@@ -459,7 +468,11 @@
             const goal = habit.goal || 0;
             const isDoneToday = habit.history.includes(todayStr);
             const levelInfo = getLevelInfo(count, habit.type);
+            const deadlineStatus = checkDeadlineStatus(habit);
             
+            // アラート状態かどうか
+            const alertClass = deadlineStatus !== 'normal' ? 'alert-glow' : '';
+
             let percent = 0;
             let statusText = `累計 ${count} 日`;
             if (goal > 0) {
@@ -482,13 +495,16 @@
                     <div class="progress-bar-fill" style="width: ${percent}%;"></div>
                 </div>
                 <div class="goal-status">${statusText}</div>
+                
                 <div class="action-row">
                     <div class="icon-btn" onclick="openEditModal(${habit.id})">⚙️</div>
+                    
                     <button class="check-btn ${isDoneToday ? 'checked' : ''}" 
                             onclick="updateHabit('${habit.id}', '${todayStr}')">
                         ${isDoneToday ? '✔' : '+'}
                     </button>
-                    <div class="icon-btn" style="opacity:0; pointer-events:none;"></div>
+                    
+                    <div class="icon-btn ${alertClass}" onclick="handleCollectionClick(${habit.id})">📦</div>
                 </div>
             `;
             
@@ -501,6 +517,11 @@
             page.className = 'habit-page';
             page.id = 'page-archive';
             page.style.paddingTop = '20px';
+            
+            const title = document.createElement('h3');
+            title.textContent = "殿堂入り (アーカイブ)";
+            title.style.marginTop = "0";
+            page.appendChild(title);
 
             list.forEach(h => {
                 const div = document.createElement('div');
@@ -678,22 +699,26 @@
         const nameInput = document.getElementById('habit-name-input');
         const goalInput = document.getElementById('habit-goal-input');
         const modalTitle = document.getElementById('modal-title');
-        const dangerArea = document.getElementById('danger-area');
+        const deleteArea = document.getElementById('delete-area');
 
         function openAddModal() {
             editIndex = -1;
             modalTitle.textContent = "新しい習慣";
             nameInput.value = ""; goalInput.value = "";
-            dangerArea.style.display = 'none'; modal.classList.add('open');
+            deleteArea.style.display = 'none'; modal.classList.add('open');
         }
         function openEditModal(id) {
             const habit = habitsData.find(h => h.id == id);
             editIndex = habitsData.indexOf(habit);
             modalTitle.textContent = "設定を編集";
             nameInput.value = habit.name; goalInput.value = habit.goal || "";
-            dangerArea.style.display = 'block'; modal.classList.add('open');
+            deleteArea.style.display = 'block'; modal.classList.add('open');
         }
-        function closeModal() { modal.classList.remove('open'); }
+        
+        // 全てのモーダルを閉じる
+        function closeModal() {
+            document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('open'));
+        }
 
         document.getElementById('save-btn').onclick = async () => {
             const name = nameInput.value.trim();
@@ -726,7 +751,8 @@
             }
         };
 
-        document.getElementById('archive-btn').onclick = async () => {
+        // マニュアルアーカイブ（中断）
+        document.getElementById('manual-archive-btn').onclick = async () => {
              if(!confirm("この習慣を中断してアーカイブしますか？\n（いつでも再開はできませんが履歴は残ります）")) return;
              const habit = habitsData[editIndex];
              await archiveHabit(habit.id, 'suspended'); 
@@ -737,11 +763,10 @@
             const habit = habitsData[editIndex];
             habitsData.splice(editIndex, 1);
             
-            // 削除後、一番左のタブに戻る
             renderApp();
             const activeHabits = habitsData.filter(h => h.archived !== true);
             if(activeHabits.length > 0) switchTab(activeHabits[0].id);
-            else openAddModal(); // 何もなくなったら追加画面へ
+            else openAddModal(); 
 
             closeModal(); 
             await postData({ action: 'delete', id: habit.id });
