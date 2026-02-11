@@ -54,7 +54,13 @@
             white-space: nowrap; padding: 8px 14px; border-radius: 18px;
             background: var(--bg-color); color: var(--text-sub); font-size: 13px; font-weight: 600;
             transition: all 0.2s; cursor: pointer;
+            /* 空のタブが表示されないようにする安全策 */
+            min-width: 20px; 
+            text-align: center;
         }
+        /* 名前がないタブを非表示にする（ドット対策） */
+        .tab-item:empty { display: none; }
+        
         .tab-item.active {
             background: var(--text-main); color: var(--card-bg);
             box-shadow: 0 4px 10px rgba(0,0,0,0.2);
@@ -85,6 +91,10 @@
         .plant-icon:hover { transform: scale(1.1); }
         .habit-level { font-size: 13px; color: var(--text-sub); font-weight: bold; }
         .streak-info { font-size: 12px; color: #ff9500; font-weight: bold; margin-top: 4px; height: 1.2em; }
+        .archive-badge { 
+            background: #8e8e93; color: white; font-size: 10px; padding: 4px 8px; 
+            border-radius: 4px; margin-bottom: 5px; display: inline-block;
+        }
 
         /* 進捗バー */
         .progress-bar-container {
@@ -121,6 +131,7 @@
             background: var(--primary); border-color: var(--primary); color: white;
             box-shadow: 0 5px 20px rgba(52, 199, 89, 0.4);
         }
+        .check-btn.disabled { opacity: 0.5; cursor: default; pointer-events: none; }
         .check-btn:active { transform: scale(0.95); }
 
         @keyframes rubberBand {
@@ -275,7 +286,7 @@
             const diffX = sX - eX;
             const diffY = sY - eY;
             if (Math.abs(diffX) > 50 && Math.abs(diffX) > Math.abs(diffY)) {
-                const activeHabits = habitsData.filter(h => !h.archived);
+                const activeHabits = habitsData.filter(h => h.archived !== true);
                 const activeTab = document.querySelector('.tab-item.active');
                 if(!activeTab) return;
                 
@@ -284,7 +295,7 @@
 
                 if (diffX > 0) {
                     if (activeIndex < activeHabits.length - 1) switchTab(activeHabits[activeIndex + 1].id, 'next');
-                    else if (habitsData.some(h => h.archived)) switchTab('archive', 'next'); 
+                    else if (habitsData.some(h => h.archived === true)) switchTab('archive', 'next'); 
                 } else { 
                     if (activeIndex > 0) switchTab(activeHabits[activeIndex - 1].id, 'prev');
                 }
@@ -297,8 +308,11 @@
                 if (!res.ok) throw new Error("Network Error");
                 habitsData = JSON.parse(await res.text());
                 
+                // データ補正
                 habitsData.forEach(h => {
                     if(!h.startDate) h.startDate = new Date(h.id).toISOString().split('T')[0];
+                    // 名前がない場合は補正
+                    if(!h.name || h.name.trim() === "") h.name = "無題";
                 });
 
                 document.getElementById('loading').style.display = 'none';
@@ -327,7 +341,7 @@
             const currentHour = now.getHours();
 
             habitsData.forEach(habit => {
-                if (habit.archived || !habit.goal) return; 
+                if (habit.archived === true || !habit.goal) return; 
 
                 const { endStr } = getDates(habit);
                 if (!endStr) return;
@@ -374,11 +388,19 @@
             habit.archived = true;
             habit.result = status;
             
-            // モーダルを閉じる
             document.getElementById('result-modal').classList.remove('open');
             document.getElementById('edit-modal').classList.remove('open');
             
             renderApp();
+            
+            // アーカイブ後は一番左のタブ（または有効なタブ）に戻す
+            const activeHabits = habitsData.filter(h => h.archived !== true);
+            if(activeHabits.length > 0) {
+                switchTab(activeHabits[0].id);
+            } else if (habitsData.some(h => h.archived === true)) {
+                switchTab('archive');
+            }
+
             await postData({ action: 'edit', id: habit.id, archived: true, result: status });
         }
 
@@ -395,8 +417,9 @@
             tabList.innerHTML = '';
             contentArea.innerHTML = '';
 
-            const activeHabits = habitsData.filter(h => !h.archived);
-            const archivedHabits = habitsData.filter(h => h.archived);
+            // ★厳密にフィルタリング（undefined も除外）
+            const activeHabits = habitsData.filter(h => h.archived !== true);
+            const archivedHabits = habitsData.filter(h => h.archived === true);
 
             activeHabits.forEach((habit, index) => {
                 const tab = document.createElement('div');
@@ -490,7 +513,7 @@
                 let status = '';
                 if(h.result === 'achieved') status = '🏆 達成';
                 else if(h.result === 'failed') status = '🔚 終了';
-                else status = '⏸ 中断'; // manual archive
+                else status = '⏸ 中断'; 
 
                 div.innerHTML = `
                     <div style="font-weight:bold; margin-bottom:5px;">${h.name}</div>
@@ -584,9 +607,11 @@
 
         function switchTab(tabId, direction = null) {
             document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
-            document.getElementById(`tab-${tabId}`).classList.add('active');
-            
             const tabElem = document.getElementById(`tab-${tabId}`);
+            // タブが存在しない場合（削除・アーカイブ直後など）のガード
+            if (!tabElem) return; 
+
+            tabElem.classList.add('active');
             tabElem.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
 
             document.querySelectorAll('.habit-page').forEach(p => {
@@ -594,10 +619,11 @@
             });
             
             const newPage = document.getElementById(`page-${tabId}`);
-            newPage.classList.add('active');
-            
-            if (direction === 'next') newPage.classList.add('slide-left');
-            else if (direction === 'prev') newPage.classList.add('slide-right');
+            if (newPage) {
+                newPage.classList.add('active');
+                if (direction === 'next') newPage.classList.add('slide-left');
+                else if (direction === 'prev') newPage.classList.add('slide-right');
+            }
         }
 
         function getLevelInfo(count, habitType) {
@@ -703,18 +729,24 @@
             }
         };
 
-        // ▼ 手動アーカイブ（中断）
         document.getElementById('archive-btn').onclick = async () => {
              if(!confirm("この習慣を中断してアーカイブしますか？\n（いつでも再開はできませんが履歴は残ります）")) return;
              const habit = habitsData[editIndex];
-             await archiveHabit(habit.id, 'suspended'); // 'suspended' ステータスでアーカイブ
+             await archiveHabit(habit.id, 'suspended'); 
         };
 
         document.getElementById('delete-btn').onclick = async () => {
             if(!confirm("本当に削除しますか？\n（履歴も完全に消えます）")) return;
             const habit = habitsData[editIndex];
             habitsData.splice(editIndex, 1);
-            closeModal(); renderApp();
+            
+            // 削除後、一番左のタブに戻る
+            renderApp();
+            const activeHabits = habitsData.filter(h => h.archived !== true);
+            if(activeHabits.length > 0) switchTab(activeHabits[0].id);
+            else openAddModal(); // 何もなくなったら追加画面へ
+
+            closeModal(); 
             await postData({ action: 'delete', id: habit.id });
         };
 
