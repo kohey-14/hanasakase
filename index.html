@@ -15,6 +15,8 @@
             --card-bg: #ffffff;
             --primary: #34c759; /* 緑色 */
             --danger: #ff3b30;
+            --highlight-start: #007aff;
+            --highlight-end: #ff3b30;
             --text-main: #1c1c1e;
             --text-sub: #8e8e93;
             --border: #e5e5ea;
@@ -82,6 +84,10 @@
         .plant-icon:hover { transform: scale(1.1); }
         .habit-level { font-size: 13px; color: var(--text-sub); font-weight: bold; }
         .streak-info { font-size: 12px; color: #ff9500; font-weight: bold; margin-top: 4px; height: 1.2em; }
+        .archive-badge { 
+            background: #8e8e93; color: white; font-size: 10px; padding: 4px 8px; 
+            border-radius: 4px; margin-bottom: 5px; display: inline-block;
+        }
 
         /* 進捗バー */
         .progress-bar-container {
@@ -118,6 +124,7 @@
             background: var(--primary); border-color: var(--primary); color: white;
             box-shadow: 0 5px 20px rgba(52, 199, 89, 0.4);
         }
+        .check-btn.disabled { opacity: 0.5; cursor: default; pointer-events: none; }
         .check-btn:active { transform: scale(0.95); }
 
         @keyframes rubberBand {
@@ -135,23 +142,28 @@
         .calendar-card {
             background: var(--card-bg); border-radius: 20px; padding: 20px; width: 100%; max-width: 340px;
         }
-        /* 曜日ヘッダー */
+        .calendar-header {
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; font-weight: bold;
+        }
+        .cal-nav { cursor: pointer; padding: 5px 10px; color: var(--primary); font-size: 18px; }
+        
         .week-header {
             display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 8px;
         }
-        .week-day {
-            text-align: center; font-size: 12px; color: var(--text-sub); font-weight: bold;
-        }
+        .week-day { text-align: center; font-size: 12px; color: var(--text-sub); font-weight: bold; }
         .days-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
         .day-cell {
             aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
-            font-size: 13px; border-radius: 8px; color: var(--text-main); cursor: pointer;
+            font-size: 13px; border-radius: 8px; color: var(--text-main); cursor: pointer; position: relative;
         }
-        .day-cell.empty { cursor: default; } /* 空白セル用 */
-        .day-cell.today { 
-            border: 2px solid var(--primary); color: var(--primary); font-weight: bold;
-        }
+        .day-cell.empty { cursor: default; }
+        .day-cell.today { background: var(--bg-color); border: 2px solid var(--text-main); font-weight: bold; }
         .day-cell.done { background: var(--primary); color: white; border: none; }
+        
+        /* 開始日・終了日ハイライト */
+        .day-cell.start-date { box-shadow: 0 0 0 2px var(--highlight-start) inset; }
+        .day-cell.end-date { box-shadow: 0 0 0 2px var(--highlight-end) inset; color: var(--danger); font-weight:bold; }
+        .day-cell.done.end-date { color: white; box-shadow: 0 0 0 2px white inset, 0 0 0 4px var(--highlight-end); }
 
         /* モーダル */
         .modal-overlay {
@@ -208,6 +220,16 @@
         </div>
     </div>
 
+    <div id="result-modal" class="modal-overlay">
+        <div class="modal-card">
+            <h1 id="result-icon" style="font-size: 50px; margin:0;"></h1>
+            <h3 id="result-title" style="margin: 10px 0;"></h3>
+            <p id="result-msg" style="font-size:14px; color:var(--text-sub);"></p>
+            <div class="modal-btns" id="result-btns">
+                </div>
+        </div>
+    </div>
+
     <script>
         // ↓↓↓ URLを書き換えてください ↓↓↓
         const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby-gjPZTKo2-9F8IpCksFjn-BkpC6yPYv0eHOgyM1ZollaZAc8E1K_agL-HvvP243be/exec";
@@ -215,10 +237,13 @@
         const tabList = document.getElementById('tab-list');
         const contentArea = document.getElementById('content-area');
         const todayStr = new Date().toISOString().split('T')[0];
-        let habitsData = []; let editIndex = -1;
+        let habitsData = []; 
+        let editIndex = -1;
+        
+        // カレンダー表示月（各習慣ごとに管理）
+        let calendarStates = {}; // { habitId: { year: 2026, month: 1 } }
 
-        let touchStartX = 0;
-        let touchStartY = 0;
+        let touchStartX = 0; let touchStartY = 0;
 
         const plantDefinitions = {
             "apple": { name: "🍎 リンゴの木", levels: ["🌱", "🌿", "🌳", "🍎", "🥧", "👑"] },
@@ -255,14 +280,24 @@
             const diffX = sX - eX;
             const diffY = sY - eY;
             if (Math.abs(diffX) > 50 && Math.abs(diffX) > Math.abs(diffY)) {
-                const currentIndex = habitsData.findIndex((_, i) =>
-                    document.getElementById(`tab-${i}`).classList.contains('active')
-                );
-                if (currentIndex === -1) return;
-                if (diffX > 0) {
-                    if (currentIndex < habitsData.length - 1) switchTab(currentIndex + 1, 'next');
-                } else {
-                    if (currentIndex > 0) switchTab(currentIndex - 1, 'prev');
+                // アーカイブを除く表示中のリストで計算
+                const activeHabits = habitsData.filter(h => !h.archived);
+                const activeTab = document.querySelector('.tab-item.active');
+                if(!activeTab) return;
+                
+                // 現在のIDからインデックスを探す
+                const currentId = activeTab.id.replace('tab-', '');
+                // IDはユニークではないので（配列インデックスを使っている）、DOMから探す
+                const activeIndex = activeHabits.findIndex((h, i) => `tab-${h.id}` === activeTab.id);
+
+                // アーカイブタブへの移動ロジックが必要だが、今回はシンプルに習慣間の移動のみ
+                if (activeIndex === -1) return; // アーカイブタブなどの場合
+
+                if (diffX > 0) { // 次へ
+                    if (activeIndex < activeHabits.length - 1) switchTab(activeHabits[activeIndex + 1].id, 'next');
+                    else if (habitsData.some(h => h.archived)) switchTab('archive', 'next'); // 次がアーカイブ
+                } else { // 前へ
+                    if (activeIndex > 0) switchTab(activeHabits[activeIndex - 1].id, 'prev');
                 }
             }
         }
@@ -272,7 +307,14 @@
                 const res = await fetch(SCRIPT_URL);
                 if (!res.ok) throw new Error("Network Error");
                 habitsData = JSON.parse(await res.text());
+                
+                // データ補正: startDateがない場合はIDから生成
+                habitsData.forEach(h => {
+                    if(!h.startDate) h.startDate = new Date(h.id).toISOString().split('T')[0];
+                });
+
                 document.getElementById('loading').style.display = 'none';
+                checkDeadlines(); // 期限チェック
                 renderApp();
             } catch (e) {
                 console.error(e);
@@ -280,32 +322,295 @@
             }
         }
 
-        function calculateStreak(history) {
-            if (!history || history.length === 0) return 0;
-            const sortedDates = [...history].sort((a, b) => new Date(b) - new Date(a));
-            const today = new Date().toISOString().split('T')[0];
-            const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-            
-            if (sortedDates[0] !== today && sortedDates[0] !== yesterday) return 0;
-
-            let streak = 0;
-            let checkDate = new Date(sortedDates[0]);
-            let current = new Date(checkDate);
-            
-            for (const dateStr of sortedDates) {
-                const d = new Date(dateStr);
-                const diffTime = Math.abs(current - d);
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-                
-                if (diffDays <= 1) { 
-                    if (diffDays === 1) streak++; 
-                    else if (streak === 0) streak = 1; 
-                    current = d; 
-                } else {
-                    break; 
-                }
+        function getDates(habit) {
+            const start = new Date(habit.startDate);
+            const goalDays = habit.goal || 0;
+            let endStr = null;
+            if (goalDays > 0) {
+                // 終了予定日 = 開始日 + (目標日数 - 1)日
+                const end = new Date(start);
+                end.setDate(start.getDate() + goalDays - 1);
+                endStr = end.toISOString().split('T')[0];
             }
-            return streak;
+            return { startStr: habit.startDate, endStr: endStr };
+        }
+
+        function checkDeadlines() {
+            const now = new Date();
+            const currentHour = now.getHours();
+
+            habitsData.forEach(habit => {
+                if (habit.archived || !habit.goal) return; // 既にアーカイブ済みか目標なしはスキップ
+
+                const { endStr } = getDates(habit);
+                if (!endStr) return;
+
+                const endDate = new Date(endStr);
+                // 判定基準: 今日の日付が終了日を超えている、または今日が終了日で23時を過ぎている
+                const isPastDate = new Date(todayStr) > endDate;
+                const isDeadlineHour = (todayStr === endStr && currentHour >= 23);
+
+                if (isPastDate || isDeadlineHour) {
+                    showResultModal(habit);
+                }
+            });
+        }
+
+        function showResultModal(habit) {
+            const modal = document.getElementById('result-modal');
+            const icon = document.getElementById('result-icon');
+            const title = document.getElementById('result-title');
+            const msg = document.getElementById('result-msg');
+            const btns = document.getElementById('result-btns');
+
+            const count = habit.history.length;
+            const isAchieved = count >= habit.goal;
+
+            if (isAchieved) {
+                icon.textContent = "🎉";
+                title.textContent = "目標達成！";
+                msg.textContent = `おめでとうございます！\n「${habit.name}」をアーカイブ（殿堂入り）します。`;
+                btns.innerHTML = `<button class="btn btn-primary" onclick="archiveHabit(${habit.id}, 'achieved')">殿堂入りさせる</button>`;
+            } else {
+                icon.textContent = "😢";
+                title.textContent = "期限終了...";
+                msg.textContent = `「${habit.name}」の終了予定日を過ぎました。\n目標達成には届きませんでした。`;
+                btns.innerHTML = `
+                    <button class="btn btn-primary" onclick="resetHabit(${habit.id})">心機一転リセット</button>
+                    <button class="btn btn-cancel" onclick="archiveHabit(${habit.id}, 'failed')">未達成で記録</button>
+                `;
+            }
+            modal.classList.add('open');
+        }
+
+        async function archiveHabit(id, status) {
+            const habit = habitsData.find(h => h.id == id);
+            habit.archived = true;
+            habit.result = status;
+            document.getElementById('result-modal').classList.remove('open');
+            renderApp();
+            await postData({ action: 'edit', id: habit.id, archived: true, result: status });
+        }
+
+        async function resetHabit(id) {
+            const habit = habitsData.find(h => h.id == id);
+            habit.startDate = todayStr; // 開始日を今日に
+            habit.history = []; // 履歴リセット
+            // IDは変えない（変えると別物になるため）
+            document.getElementById('result-modal').classList.remove('open');
+            renderApp();
+            // 全データを送って更新
+            await postData({ action: 'edit', id: habit.id, startDate: todayStr, history: [], archived: false });
+        }
+
+        function renderApp() {
+            tabList.innerHTML = '';
+            contentArea.innerHTML = '';
+
+            // アクティブな習慣
+            const activeHabits = habitsData.filter(h => !h.archived);
+            const archivedHabits = habitsData.filter(h => h.archived);
+
+            // タブ生成
+            activeHabits.forEach((habit, index) => {
+                const tab = document.createElement('div');
+                tab.className = `tab-item ${index === 0 ? 'active' : ''}`;
+                tab.id = `tab-${habit.id}`;
+                tab.textContent = habit.name;
+                tab.onclick = () => switchTab(habit.id);
+                tabList.appendChild(tab);
+                
+                const page = createHabitPage(habit);
+                if (index === 0) page.classList.add('active');
+                contentArea.appendChild(page);
+            });
+
+            // 新規追加ボタン
+            const addTab = document.createElement('div');
+            addTab.className = 'tab-item add-tab';
+            addTab.textContent = '＋';
+            addTab.onclick = () => openAddModal();
+            tabList.appendChild(addTab);
+
+            // アーカイブタブ（存在する場合）
+            if (archivedHabits.length > 0) {
+                const arcTab = document.createElement('div');
+                arcTab.className = 'tab-item';
+                arcTab.id = 'tab-archive';
+                arcTab.textContent = '📦';
+                arcTab.onclick = () => switchTab('archive');
+                tabList.appendChild(arcTab);
+
+                const arcPage = createArchivePage(archivedHabits);
+                contentArea.appendChild(arcPage);
+            }
+        }
+
+        function createHabitPage(habit) {
+            const page = document.createElement('div');
+            page.className = 'habit-page';
+            page.id = `page-${habit.id}`;
+            const count = habit.history.length;
+            const goal = habit.goal || 0;
+            const isDoneToday = habit.history.includes(todayStr);
+            const levelInfo = getLevelInfo(count, habit.type);
+            
+            let percent = 0;
+            let statusText = `累計 ${count} 日`;
+            if (goal > 0) {
+                percent = Math.min(100, (count / goal) * 100);
+                statusText = `${count} / ${goal} 日達成 (${Math.round(percent)}%)`;
+            }
+            
+            // カレンダー状態初期化
+            if (!calendarStates[habit.id]) {
+                const now = new Date();
+                calendarStates[habit.id] = { year: now.getFullYear(), month: now.getMonth() };
+            }
+
+            page.innerHTML = `
+                <div class="plant-area">
+                    <div class="plant-icon">${levelInfo.icon}</div>
+                    <div class="habit-level" style="font-size:11px; color:#34c759; margin-bottom:2px;">${levelInfo.plantName}</div>
+                    <div class="habit-level">${levelInfo.title}</div>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar-fill" style="width: ${percent}%;"></div>
+                </div>
+                <div class="goal-status">${statusText}</div>
+                <div class="action-row">
+                    <div class="icon-btn" onclick="openEditModal(${habit.id})">⚙️</div>
+                    <button class="check-btn ${isDoneToday ? 'checked' : ''}" 
+                            onclick="updateHabit('${habit.id}', '${todayStr}')">
+                        ${isDoneToday ? '✔' : '+'}
+                    </button>
+                    <div class="icon-btn" style="opacity:0; pointer-events:none;"></div>
+                </div>
+            `;
+            
+            page.appendChild(createCalendar(habit));
+            return page;
+        }
+
+        function createArchivePage(list) {
+            const page = document.createElement('div');
+            page.className = 'habit-page';
+            page.id = 'page-archive';
+            page.style.paddingTop = '20px';
+
+            list.forEach(h => {
+                const div = document.createElement('div');
+                div.className = 'calendar-card';
+                div.style.marginBottom = '15px';
+                div.style.textAlign = 'left';
+                const status = h.result === 'achieved' ? '🏆 達成' : '🔚 終了';
+                div.innerHTML = `
+                    <div style="font-weight:bold; margin-bottom:5px;">${h.name}</div>
+                    <div style="font-size:12px; color:var(--text-sub);">
+                        ${status} (${h.history.length}日) <br>
+                        開始: ${h.startDate}
+                    </div>
+                `;
+                page.appendChild(div);
+            });
+            return page;
+        }
+
+        function createCalendar(habit) {
+            const state = calendarStates[habit.id];
+            const year = state.year;
+            const month = state.month;
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'calendar-card';
+            wrapper.id = `cal-wrapper-${habit.id}`;
+
+            const header = document.createElement('div');
+            header.className = 'calendar-header';
+            header.innerHTML = `
+                <div class="cal-nav" onclick="changeMonth(${habit.id}, -1)">◀︎</div>
+                <div>${year}年 ${month + 1}月</div>
+                <div class="cal-nav" onclick="changeMonth(${habit.id}, 1)">▶︎</div>
+            `;
+            wrapper.appendChild(header);
+
+            const weekHeader = document.createElement('div');
+            weekHeader.className = 'week-header';
+            ['日', '月', '火', '水', '木', '金', '土'].forEach(d => {
+                const div = document.createElement('div');
+                div.className = 'week-day'; div.textContent = d;
+                weekHeader.appendChild(div);
+            });
+            wrapper.appendChild(weekHeader);
+
+            const grid = document.createElement('div');
+            grid.className = 'days-grid';
+            
+            const firstDayOfWeek = new Date(year, month, 1).getDay();
+            const lastDate = new Date(year, month + 1, 0).getDate();
+            const { startStr, endStr } = getDates(habit);
+
+            for(let i = 0; i < firstDayOfWeek; i++) {
+                const empty = document.createElement('div');
+                empty.className = 'day-cell empty';
+                grid.appendChild(empty);
+            }
+
+            for (let d = 1; d <= lastDate; d++) {
+                const cell = document.createElement('div');
+                cell.className = 'day-cell';
+                cell.textContent = d;
+                const dateStr = `${year}-${(month+1).toString().padStart(2,'0')}-${d.toString().padStart(2,'0')}`;
+                
+                if (habit.history.includes(dateStr)) cell.classList.add('done');
+                if (dateStr === todayStr) cell.classList.add('today');
+                if (dateStr === startStr) cell.classList.add('start-date');
+                if (dateStr === endStr) cell.classList.add('end-date');
+                
+                if (new Date(dateStr) <= new Date()) {
+                     cell.onclick = () => updateHabit(habit.id, dateStr);
+                } else {
+                    cell.style.opacity = "0.3"; cell.style.cursor = "default";
+                }
+                grid.appendChild(cell);
+            }
+            wrapper.appendChild(grid);
+            return wrapper;
+        }
+
+        function changeMonth(habitId, offset) {
+            const state = calendarStates[habitId];
+            let newMonth = state.month + offset;
+            let newYear = state.year;
+            
+            if (newMonth > 11) { newMonth = 0; newYear++; }
+            else if (newMonth < 0) { newMonth = 11; newYear--; }
+            
+            calendarStates[habitId] = { year: newYear, month: newMonth };
+            
+            // カレンダー部分だけ再描画
+            const habit = habitsData.find(h => h.id == habitId);
+            const oldWrapper = document.getElementById(`cal-wrapper-${habitId}`);
+            const newWrapper = createCalendar(habit);
+            oldWrapper.parentNode.replaceChild(newWrapper, oldWrapper);
+        }
+
+        function switchTab(tabId, direction = null) {
+            document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+            document.getElementById(`tab-${tabId}`).classList.add('active');
+            
+            const tabElem = document.getElementById(`tab-${tabId}`);
+            tabElem.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+
+            document.querySelectorAll('.habit-page').forEach(p => {
+                p.classList.remove('active', 'slide-left', 'slide-right');
+            });
+            
+            const newPage = document.getElementById(`page-${tabId}`);
+            newPage.classList.add('active');
+            
+            if (direction === 'next') newPage.classList.add('slide-left');
+            else if (direction === 'prev') newPage.classList.add('slide-right');
         }
 
         function getLevelInfo(count, habitType) {
@@ -323,158 +628,15 @@
             };
         }
 
-        function renderApp() {
-            tabList.innerHTML = '';
-            contentArea.innerHTML = '';
-            habitsData.forEach((habit, index) => {
-                const tab = document.createElement('div');
-                tab.className = `tab-item ${index === 0 ? 'active' : ''}`;
-                tab.id = `tab-${index}`;
-                tab.textContent = habit.name;
-                tab.onclick = () => switchTab(index);
-                tabList.appendChild(tab);
-                const page = createHabitPage(habit, index);
-                if (index === 0) page.classList.add('active');
-                contentArea.appendChild(page);
-            });
-            const addTab = document.createElement('div');
-            addTab.className = 'tab-item add-tab';
-            addTab.textContent = '＋';
-            addTab.onclick = () => openAddModal();
-            tabList.appendChild(addTab);
-        }
-
-        function createHabitPage(habit, index) {
-            const page = document.createElement('div');
-            page.className = 'habit-page';
-            page.id = `page-${index}`;
-            const count = habit.history.length;
-            const goal = habit.goal || 0;
-            const isDoneToday = habit.history.includes(todayStr);
-            const levelInfo = getLevelInfo(count, habit.type);
-            const streak = calculateStreak(habit.history);
-
-            let percent = 0;
-            let statusText = `累計 ${count} 日`;
-            if (goal > 0) {
-                percent = Math.min(100, (count / goal) * 100);
-                statusText = `${count} / ${goal} 日達成 (${Math.round(percent)}%)`;
-            }
-            
-            let streakHtml = streak > 1 ? `🔥 ${streak}日連続中!` : '';
-
-            page.innerHTML = `
-                <div class="plant-area">
-                    <div class="plant-icon">${levelInfo.icon}</div>
-                    <div class="habit-level" style="font-size:11px; color:#34c759; margin-bottom:2px;">${levelInfo.plantName}</div>
-                    <div class="habit-level">${levelInfo.title}</div>
-                    <div class="streak-info">${streakHtml}</div>
-                </div>
-                <div class="progress-bar-container">
-                    <div class="progress-bar-fill" style="width: ${percent}%;"></div>
-                </div>
-                <div class="goal-status">${statusText}</div>
-                <div class="action-row">
-                    <div class="icon-btn" onclick="openEditModal(${index})">⚙️</div>
-                    <button class="check-btn ${isDoneToday ? 'checked' : ''}" 
-                            onclick="updateHabit('${habit.id}', '${todayStr}', ${index})">
-                        ${isDoneToday ? '✔' : '+'}
-                    </button>
-                    <div class="icon-btn" style="opacity:0; pointer-events:none;"></div>
-                </div>
-            `;
-            page.appendChild(createCalendar(habit, index));
-            return page;
-        }
-
-        function createCalendar(habit, index) {
-            const wrapper = document.createElement('div');
-            wrapper.className = 'calendar-card';
-            const now = new Date();
-            const year = now.getFullYear();
-            const month = now.getMonth();
-            
-            // 年月表示
-            wrapper.innerHTML = `<div style="text-align:center; font-weight:bold; margin-bottom:15px;">${year}年 ${month + 1}月</div>`;
-            
-            // 曜日ヘッダーを追加
-            const weekHeader = document.createElement('div');
-            weekHeader.className = 'week-header';
-            const daysOfWeek = ['日', '月', '火', '水', '木', '金', '土'];
-            daysOfWeek.forEach(day => {
-                const div = document.createElement('div');
-                div.className = 'week-day';
-                div.textContent = day;
-                weekHeader.appendChild(div);
-            });
-            wrapper.appendChild(weekHeader);
-
-            // カレンダーグリッド
-            const grid = document.createElement('div');
-            grid.className = 'days-grid';
-            
-            // 月の最初の日が何曜日か（0:日, 1:月...）
-            const firstDayOfWeek = new Date(year, month, 1).getDay();
-            // 月の最終日
-            const lastDate = new Date(year, month + 1, 0).getDate();
-
-            // 最初の日の前まで空白セルを入れる
-            for(let i = 0; i < firstDayOfWeek; i++) {
-                const emptyCell = document.createElement('div');
-                emptyCell.className = 'day-cell empty';
-                grid.appendChild(emptyCell);
-            }
-
-            // 日付セルを生成
-            for (let d = 1; d <= lastDate; d++) {
-                const cell = document.createElement('div');
-                cell.className = 'day-cell';
-                cell.textContent = d;
-                const dateStr = `${year}-${(month+1).toString().padStart(2,'0')}-${d.toString().padStart(2,'0')}`;
-                
-                if (habit.history.includes(dateStr)) cell.classList.add('done');
-                if (dateStr === todayStr) cell.classList.add('today');
-                
-                // 未来の日付はクリック不可に（オプション）
-                if (new Date(dateStr) <= new Date()) {
-                     cell.onclick = () => updateHabit(habit.id, dateStr, index);
-                } else {
-                    cell.style.opacity = "0.3";
-                    cell.style.cursor = "default";
-                }
-                
-                grid.appendChild(cell);
-            }
-            wrapper.appendChild(grid);
-            return wrapper;
-        }
-
-        function switchTab(index, direction = null) {
-            document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
-            const newTab = document.getElementById(`tab-${index}`);
-            newTab.classList.add('active');
-            newTab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-
-            document.querySelectorAll('.habit-page').forEach(p => {
-                p.classList.remove('active', 'slide-left', 'slide-right');
-            });
-            
-            const newPage = document.getElementById(`page-${index}`);
-            newPage.classList.add('active');
-            
-            if (direction === 'next') newPage.classList.add('slide-left');
-            else if (direction === 'prev') newPage.classList.add('slide-right');
-        }
-
-        async function updateHabit(id, dateStr, index) {
-            const btn = document.querySelector(`#page-${index} .check-btn`);
-            if(btn) {
-                btn.classList.remove('animating');
-                void btn.offsetWidth;
-                btn.classList.add('animating');
-            }
-
+        async function updateHabit(id, dateStr) {
             const habit = habitsData.find(h => h.id == id);
+            
+            // アニメーション
+            const btn = document.querySelector(`#page-${id} .check-btn`);
+            if(btn && dateStr === todayStr) {
+                btn.classList.remove('animating'); void btn.offsetWidth; btn.classList.add('animating');
+            }
+
             const isDone = habit.history.includes(dateStr);
             if (isDone) habit.history = habit.history.filter(d => d !== dateStr);
             else {
@@ -486,10 +648,24 @@
                      confetti({ particleCount: 40, spread: 60, origin: { y: 0.6 } });
                 }
             }
-            const page = document.getElementById(`page-${index}`);
-            const newPage = createHabitPage(habit, index);
-            newPage.classList.add('active');
-            contentArea.replaceChild(newPage, page);
+            
+            // カレンダー再描画（現在の月を維持）
+            const oldWrapper = document.getElementById(`cal-wrapper-${id}`);
+            const newWrapper = createCalendar(habit);
+            oldWrapper.parentNode.replaceChild(newWrapper, oldWrapper);
+            
+            // 進捗バー更新
+            const page = document.getElementById(`page-${id}`);
+            const count = habit.history.length;
+            const goal = habit.goal || 0;
+            let percent = 0;
+            if (goal > 0) percent = Math.min(100, (count / goal) * 100);
+            
+            page.querySelector('.progress-bar-fill').style.width = `${percent}%`;
+            page.querySelector('.goal-status').textContent = 
+                goal > 0 ? `${count} / ${goal} 日達成 (${Math.round(percent)}%)` : `累計 ${count} 日`;
+
+            // データ送信
             postData({ action: 'toggle', id: id, date: dateStr, done: !isDone });
         }
 
@@ -505,9 +681,9 @@
             nameInput.value = ""; goalInput.value = "";
             deleteArea.style.display = 'none'; modal.classList.add('open');
         }
-        function openEditModal(index) {
-            editIndex = index;
-            const habit = habitsData[index];
+        function openEditModal(id) {
+            const habit = habitsData.find(h => h.id == id);
+            editIndex = habitsData.indexOf(habit); // 配列のインデックス
             modalTitle.textContent = "設定を編集";
             nameInput.value = habit.name; goalInput.value = habit.goal || "";
             deleteArea.style.display = 'block'; modal.classList.add('open');
@@ -523,24 +699,27 @@
             if(editIndex === -1) {
                 const plantKeys = Object.keys(plantDefinitions);
                 const randomType = plantKeys[Math.floor(Math.random() * plantKeys.length)];
-
                 const tempId = Date.now();
-                habitsData.push({ id: tempId, name: name, history: [], goal: goal, type: randomType });
+                const newHabit = { 
+                    id: tempId, name: name, history: [], goal: goal, 
+                    type: randomType, startDate: todayStr, archived: false 
+                };
+                habitsData.push(newHabit);
                 
                 renderApp(); 
-                switchTab(habitsData.length - 1);
+                switchTab(tempId);
                 
                 setTimeout(() => {
                     const plantName = plantDefinitions[randomType].name;
                     alert(`🌱 新しい種を植えました！\n【${plantName}】が育ちます。`);
                 }, 300);
 
-                await postData({ action: 'add', name: name, goal: goal, type: randomType });
+                await postData({ action: 'add', name: name, goal: goal, type: randomType, startDate: todayStr });
             } else {
                 const habit = habitsData[editIndex];
                 habit.name = name; habit.goal = goal;
-                renderApp(); switchTab(editIndex);
-                await postData({ action: 'edit', id: habit.id, name: name, goal: goal, type: habit.type });
+                renderApp(); switchTab(habit.id);
+                await postData({ action: 'edit', id: habit.id, name: name, goal: goal });
             }
         };
 
