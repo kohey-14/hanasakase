@@ -37,7 +37,7 @@
             margin: 0; padding: 0; padding-bottom: 40px; height: 100vh;
             display: flex; flex-direction: column; user-select: none;
             -webkit-tap-highlight-color: transparent;
-            overscroll-behavior-y: none; /* バウンス抑制 */
+            overscroll-behavior-y: none;
         }
 
         /* ヘッダー & タブ */
@@ -62,7 +62,6 @@
         #content-area { flex: 1; padding: 20px; overflow-y: auto; position: relative; }
         
         .habit-page { display: none; flex-direction: column; align-items: center; width: 100%; }
-        /* アニメーション用クラス */
         .habit-page.active { display: flex; animation: fadeIn 0.3s ease-out; }
         .slide-left { animation: slideInRight 0.3s ease-out; }
         .slide-right { animation: slideInLeft 0.3s ease-out; }
@@ -121,7 +120,6 @@
         }
         .check-btn:active { transform: scale(0.95); }
 
-        /* アニメーション（ラバーバンド効果） */
         @keyframes rubberBand {
             0% { transform: scale(1); }
             30% { transform: scale(1.25, 0.75); }
@@ -137,13 +135,23 @@
         .calendar-card {
             background: var(--card-bg); border-radius: 20px; padding: 20px; width: 100%; max-width: 340px;
         }
+        /* 曜日ヘッダー */
+        .week-header {
+            display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 8px;
+        }
+        .week-day {
+            text-align: center; font-size: 12px; color: var(--text-sub); font-weight: bold;
+        }
         .days-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
         .day-cell {
             aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
             font-size: 13px; border-radius: 8px; color: var(--text-main); cursor: pointer;
         }
-        .day-cell.today { border: 2px solid var(--text-main); font-weight: bold; }
-        .day-cell.done { background: var(--primary); color: white; }
+        .day-cell.empty { cursor: default; } /* 空白セル用 */
+        .day-cell.today { 
+            border: 2px solid var(--primary); color: var(--primary); font-weight: bold;
+        }
+        .day-cell.done { background: var(--primary); color: white; border: none; }
 
         /* モーダル */
         .modal-overlay {
@@ -209,11 +217,9 @@
         const todayStr = new Date().toISOString().split('T')[0];
         let habitsData = []; let editIndex = -1;
 
-        // ★スワイプ用変数
         let touchStartX = 0;
         let touchStartY = 0;
 
-        // ★植物定義
         const plantDefinitions = {
             "apple": { name: "🍎 リンゴの木", levels: ["🌱", "🌿", "🌳", "🍎", "🥧", "👑"] },
             "sunflower": { name: "🌻 ヒマワリ", levels: ["🌱", "🍃", "🌷", "🌻", "🏖️", "🌞"] },
@@ -248,27 +254,18 @@
         function handleSwipe(sX, sY, eX, eY) {
             const diffX = sX - eX;
             const diffY = sY - eY;
-            
-            // 感度: 50px以上動いたらスワイプと判定
-            // 縦スクロール誤爆防止: 横移動の方が大きい時だけ反応
             if (Math.abs(diffX) > 50 && Math.abs(diffX) > Math.abs(diffY)) {
-                // 現在のタブインデックスを取得
                 const currentIndex = habitsData.findIndex((_, i) =>
                     document.getElementById(`tab-${i}`).classList.contains('active')
                 );
-                
                 if (currentIndex === -1) return;
-
                 if (diffX > 0) {
-                    // 左スワイプ -> 次のタブへ
                     if (currentIndex < habitsData.length - 1) switchTab(currentIndex + 1, 'next');
                 } else {
-                    // 右スワイプ -> 前のタブへ
                     if (currentIndex > 0) switchTab(currentIndex - 1, 'prev');
                 }
             }
         }
-        // ------------------
 
         async function fetchHabits() {
             try {
@@ -396,18 +393,56 @@
             const now = new Date();
             const year = now.getFullYear();
             const month = now.getMonth();
-            wrapper.innerHTML = `<div style="text-align:center; font-weight:bold; margin-bottom:15px;">${month + 1}月</div>`;
+            
+            // 年月表示
+            wrapper.innerHTML = `<div style="text-align:center; font-weight:bold; margin-bottom:15px;">${year}年 ${month + 1}月</div>`;
+            
+            // 曜日ヘッダーを追加
+            const weekHeader = document.createElement('div');
+            weekHeader.className = 'week-header';
+            const daysOfWeek = ['日', '月', '火', '水', '木', '金', '土'];
+            daysOfWeek.forEach(day => {
+                const div = document.createElement('div');
+                div.className = 'week-day';
+                div.textContent = day;
+                weekHeader.appendChild(div);
+            });
+            wrapper.appendChild(weekHeader);
+
+            // カレンダーグリッド
             const grid = document.createElement('div');
             grid.className = 'days-grid';
+            
+            // 月の最初の日が何曜日か（0:日, 1:月...）
+            const firstDayOfWeek = new Date(year, month, 1).getDay();
+            // 月の最終日
             const lastDate = new Date(year, month + 1, 0).getDate();
+
+            // 最初の日の前まで空白セルを入れる
+            for(let i = 0; i < firstDayOfWeek; i++) {
+                const emptyCell = document.createElement('div');
+                emptyCell.className = 'day-cell empty';
+                grid.appendChild(emptyCell);
+            }
+
+            // 日付セルを生成
             for (let d = 1; d <= lastDate; d++) {
                 const cell = document.createElement('div');
                 cell.className = 'day-cell';
                 cell.textContent = d;
                 const dateStr = `${year}-${(month+1).toString().padStart(2,'0')}-${d.toString().padStart(2,'0')}`;
+                
                 if (habit.history.includes(dateStr)) cell.classList.add('done');
                 if (dateStr === todayStr) cell.classList.add('today');
-                cell.onclick = () => { if (new Date(dateStr) <= new Date()) updateHabit(habit.id, dateStr, index); };
+                
+                // 未来の日付はクリック不可に（オプション）
+                if (new Date(dateStr) <= new Date()) {
+                     cell.onclick = () => updateHabit(habit.id, dateStr, index);
+                } else {
+                    cell.style.opacity = "0.3";
+                    cell.style.cursor = "default";
+                }
+                
                 grid.appendChild(cell);
             }
             wrapper.appendChild(grid);
@@ -418,8 +453,6 @@
             document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
             const newTab = document.getElementById(`tab-${index}`);
             newTab.classList.add('active');
-            
-            // タブを自動スクロールで表示領域に入れる
             newTab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
 
             document.querySelectorAll('.habit-page').forEach(p => {
@@ -429,7 +462,6 @@
             const newPage = document.getElementById(`page-${index}`);
             newPage.classList.add('active');
             
-            // スワイプ方向に応じたアニメーションクラス付与
             if (direction === 'next') newPage.classList.add('slide-left');
             else if (direction === 'prev') newPage.classList.add('slide-right');
         }
