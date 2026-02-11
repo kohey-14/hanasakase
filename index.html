@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <title>Habit Focus Pro</title>
+    <title>花咲かせ</title>
 
     <link rel="icon" type="image/png" href="icon-new.png">
     <link rel="apple-touch-icon" href="icon-new.png">
@@ -49,6 +49,21 @@
             background: var(--bg-color); z-index: 9999;
             display: flex; flex-direction: column; justify-content: center; align-items: center;
         }
+        
+        /* ★アイコンスタイル（絵文字用） */
+        .login-icon {
+            font-size: 100px;
+            margin-bottom: 20px;
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.1));
+            /* ふわふわ浮くアニメーション */
+            animation: float 3s ease-in-out infinite;
+        }
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
+        }
+
         .login-btn {
             background: #4285F4; color: white; padding: 12px 24px;
             border-radius: 24px; font-weight: bold; border: none; font-size: 16px;
@@ -67,7 +82,7 @@
 
         /* ヘッダー & タブ */
         .tab-scroll-container {
-            background: var(--card-bg); padding: 20px 0 10px; /* 調整 */
+            background: var(--card-bg); padding: 20px 0 10px;
             border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100;
         }
         .tab-list { display: flex; overflow-x: auto; padding: 0 20px; gap: 12px; scrollbar-width: none; }
@@ -86,7 +101,7 @@
         .tab-item.add-tab { color: var(--primary); font-size: 16px; padding: 8px 16px; }
 
         /* コンテンツ */
-        #app-container { display: none; flex: 1; flex-direction: column; overflow: hidden; } /* コンテナ追加 */
+        #app-container { display: none; flex: 1; flex-direction: column; overflow: hidden; }
         #content-area { flex: 1; padding: 20px; overflow-y: auto; position: relative; }
         
         .habit-page { display: none; flex-direction: column; align-items: center; width: 100%; }
@@ -222,8 +237,9 @@
 </head>
 <body>
     <div id="login-screen">
-        <div class="plant-icon" style="font-size:100px;">🌱</div>
-        <h2 style="margin-bottom:30px;">Habit Focus Pro</h2>
+        <div class="login-icon">🌷</div>
+        
+        <h2 style="margin-bottom:30px;">花咲かせ</h2>
         <button id="google-login-btn" class="login-btn">
             Googleで始める
         </button>
@@ -304,31 +320,26 @@
         const db = getFirestore(app);
         const provider = new GoogleAuthProvider();
 
-        // 状態変数
         let currentUser = null;
         let habitsData = [];
-        let editIndex = -1; // indexではなくIDで管理するように変更するが、便宜上配列indexも使う
+        let editIndex = -1;
         let calendarStates = {};
         const todayStr = new Date().toISOString().split('T')[0];
         
-        // UI要素
         const loginScreen = document.getElementById('login-screen');
         const appContainer = document.getElementById('app-container');
         const userHeader = document.getElementById('user-header');
         const userNameSpan = document.getElementById('user-name');
         const userAvatarImg = document.getElementById('user-avatar');
         
-        // ログイン処理
         document.getElementById('google-login-btn').addEventListener('click', () => {
             signInWithPopup(auth, provider).catch(error => alert(error.message));
         });
 
-        // ログアウト処理
         document.getElementById('logout-btn').addEventListener('click', () => {
             if(confirm("ログアウトしますか？")) signOut(auth);
         });
 
-        // 認証状態監視
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 currentUser = user;
@@ -337,7 +348,7 @@
                 userHeader.style.display = 'flex';
                 userNameSpan.textContent = user.displayName;
                 userAvatarImg.src = user.photoURL;
-                subscribeToHabits(); // データ監視開始
+                subscribeToHabits(); 
             } else {
                 currentUser = null;
                 loginScreen.style.display = 'flex';
@@ -346,7 +357,6 @@
             }
         });
 
-        // ★Firestoreリアルタイム監視
         let unsubscribe = null;
         function subscribeToHabits() {
             if (unsubscribe) unsubscribe();
@@ -357,24 +367,17 @@
                 snapshot.forEach((doc) => {
                     habitsData.push({ id: doc.id, ...doc.data() });
                 });
-                
-                // データ読み込み完了後の描画
                 document.getElementById('loading').style.display = 'none';
                 renderApp();
                 
-                // 初回のみタブをセット（ただしアクティブなタブがあれば維持したい）
                 const activeTab = document.querySelector('.tab-item.active');
                 if(!activeTab && habitsData.length > 0) {
-                     // アーカイブされていない最初の項目へ
                      const activeHabits = habitsData.filter(h => h.archived !== true);
                      if(activeHabits.length > 0) switchTab(activeHabits[0].id);
                 }
             });
         }
 
-        // --- 以下、ロジック（Firebase用に調整） ---
-
-        // DBへの追加・更新・削除ラッパー
         async function addHabitToDB(data) {
             await addDoc(collection(db, "users", currentUser.uid, "habits"), {
                 ...data,
@@ -389,8 +392,6 @@
             await deleteDoc(doc(db, "users", currentUser.uid, "habits", id));
         }
 
-
-        // --- UI Logic (Adapted) ---
         const tabList = document.getElementById('tab-list');
         const contentArea = document.getElementById('content-area');
         
@@ -415,7 +416,6 @@
             { t: 100, title: "Legend" }
         ];
 
-        // グローバル関数として登録（HTMLから呼ぶため）
         window.switchTab = function(tabId, direction = null) {
             document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
             const tabElem = document.getElementById(`tab-${tabId}`);
@@ -434,7 +434,7 @@
         };
 
         window.openAddModal = function() {
-            editIndex = -1; // 新規
+            editIndex = -1;
             document.getElementById('modal-title').textContent = "新しい習慣";
             document.getElementById('habit-name-input').value = "";
             document.getElementById('habit-goal-input').value = "";
@@ -444,7 +444,7 @@
 
         window.openEditModal = function(id) {
             const habit = habitsData.find(h => h.id == id);
-            editIndex = id; // IDをセット
+            editIndex = id;
             document.getElementById('modal-title').textContent = "設定を編集";
             document.getElementById('habit-name-input').value = habit.name;
             document.getElementById('habit-goal-input').value = habit.goal || "";
@@ -456,7 +456,6 @@
             document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('open'));
         };
 
-        // スワイプ
         contentArea.addEventListener('touchstart', (e) => {
             touchStartX = e.changedTouches[0].screenX;
             touchStartY = e.changedTouches[0].screenY;
@@ -474,16 +473,15 @@
                 const activeIndex = activeHabits.findIndex((h, i) => `tab-${h.id}` === activeTab.id);
                 if (activeIndex === -1) return; 
 
-                if (diffX > 0) { // Next
+                if (diffX > 0) { 
                     if (activeIndex < activeHabits.length - 1) switchTab(activeHabits[activeIndex + 1].id, 'next');
                     else if (habitsData.some(h => h.archived === true)) switchTab('archive', 'next'); 
-                } else { // Prev
+                } else { 
                     if (activeIndex > 0) switchTab(activeHabits[activeIndex - 1].id, 'prev');
                 }
             }
         }, {passive: true});
 
-        // 描画
         function renderApp() {
             tabList.innerHTML = '';
             contentArea.innerHTML = '';
@@ -493,7 +491,6 @@
 
             activeHabits.forEach((habit, index) => {
                 const tab = document.createElement('div');
-                // アクティブ判定（現在表示中のページがあればそれを維持）
                 const currentActive = document.querySelector('.habit-page.active');
                 let isActive = false;
                 if(currentActive && currentActive.id === `page-${habit.id}`) isActive = true;
@@ -522,7 +519,6 @@
                 arcTab.id = 'tab-archive';
                 arcTab.textContent = '📦';
                 arcTab.onclick = () => switchTab('archive');
-                // アーカイブが表示中だった場合
                 if(document.querySelector('#page-archive.active')) arcTab.classList.add('active');
                 tabList.appendChild(arcTab);
 
@@ -593,7 +589,7 @@
             header.innerHTML = `
                 <div class="cal-nav" onclick="changeMonth('${habit.id}', -1)">◀︎</div>
                 <div>${year}年 ${month + 1}月</div>
-                <div class="cal-nav" onclick="changeMonth('${habit.id}', 1)">▶︎</div>
+                <div class="cal-nav" onclick="changeMonth('${habit.id}, 1)">▶︎</div>
             `;
             wrapper.appendChild(header);
 
@@ -690,7 +686,6 @@
             let history = habit.history || [];
             const isDone = history.includes(dateStr);
             
-            // アニメーション
             const btn = document.querySelector(`#page-${id} .check-btn`);
             if(btn && dateStr === todayStr) {
                 btn.classList.remove('animating'); void btn.offsetWidth; btn.classList.add('animating');
@@ -708,19 +703,16 @@
                      confetti({ particleCount: 40, spread: 60, origin: { y: 0.6 } });
                 }
             }
-            
-            // Firebase更新
             updateHabitInDB(id, { history: newHistory });
         }
 
-        // 保存ボタン
         document.getElementById('save-btn').onclick = async () => {
             const name = document.getElementById('habit-name-input').value.trim();
             const goal = parseInt(document.getElementById('habit-goal-input').value) || 0;
             if(!name) return;
             closeModal();
 
-            if(editIndex === -1) { // 新規
+            if(editIndex === -1) {
                 const plantKeys = Object.keys(plantDefinitions);
                 const randomType = plantKeys[Math.floor(Math.random() * plantKeys.length)];
                 await addHabitToDB({
@@ -736,12 +728,11 @@
                     const plantName = plantDefinitions[randomType].name;
                     alert(`🌱 新しい種を植えました！\n【${plantName}】が育ちます。`);
                 }, 300);
-            } else { // 編集
+            } else {
                 await updateHabitInDB(editIndex, { name: name, goal: goal });
             }
         };
 
-        // 削除ボタン
         document.getElementById('delete-btn').onclick = async () => {
             if(!confirm("本当に削除しますか？\n（履歴も完全に消えます）")) return;
             const habitId = editIndex;
@@ -749,7 +740,6 @@
             await deleteHabitFromDB(habitId);
         };
 
-        // 集荷関連
         window.handleCollectionClick = function(habitId) {
             const habit = habitsData.find(h => h.id == habitId);
             const status = checkDeadlineStatus(habit);
@@ -799,13 +789,11 @@
             });
         };
 
-        // manual archive
         document.getElementById('manual-archive-btn').onclick = async () => {
              if(!confirm("この習慣を中断してアーカイブしますか？")) return;
              await archiveHabit(editIndex, 'suspended');
         };
 
-        // Helper Functions
         function getDates(habit) {
             if(!habit.startDate) return { startStr: null, endStr: null };
             const start = new Date(habit.startDate);
