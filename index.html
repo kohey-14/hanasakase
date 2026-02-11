@@ -104,7 +104,7 @@
             border-radius: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         }
 
-        /* アクションエリア (設定 - チェック - 集荷) */
+        /* アクションエリア */
         .action-row { display: flex; gap: 20px; align-items: center; margin-bottom: 20px; }
         
         .icon-btn {
@@ -310,12 +310,21 @@
             try {
                 const res = await fetch(SCRIPT_URL);
                 if (!res.ok) throw new Error("Network Error");
-                habitsData = JSON.parse(await res.text());
-                
-                habitsData.forEach(h => {
-                    if(!h.startDate) h.startDate = new Date(h.id).toISOString().split('T')[0];
-                    if(!h.name || h.name.trim() === "") h.name = "無題";
-                });
+                let rawData = JSON.parse(await res.text());
+
+                // ★Local Storageからアーカイブ状態を取得
+                const localArchived = JSON.parse(localStorage.getItem('archivedHabits') || '[]');
+
+                // ★データクリーニングとステータス統合
+                habitsData = rawData
+                    .filter(h => h.name && h.name.trim() !== "") // 名前がないデータ（空行）を排除
+                    .map(h => {
+                        // GASからデータがない場合は補完
+                        if(!h.startDate) h.startDate = new Date(h.id).toISOString().split('T')[0];
+                        // Local StorageにIDがあればアーカイブ済みにする
+                        if(localArchived.includes(h.id)) h.archived = true;
+                        return h;
+                    });
 
                 document.getElementById('loading').style.display = 'none';
                 renderApp();
@@ -337,19 +346,15 @@
             return { startStr: habit.startDate, endStr: endStr };
         }
 
-        // 期限チェック（ステータスを返すだけ）
         function checkDeadlineStatus(habit) {
             if (habit.archived === true || !habit.goal) return 'normal';
-            
             const { endStr } = getDates(habit);
             if (!endStr) return 'normal';
-
             const now = new Date();
             const currentHour = now.getHours();
             const endDate = new Date(endStr);
             const isPastDate = new Date(todayStr) > endDate;
             const isDeadlineHour = (todayStr === endStr && currentHour >= 23);
-
             if (isPastDate || isDeadlineHour) {
                 const count = habit.history.length;
                 return count >= habit.goal ? 'achieved' : 'failed';
@@ -357,17 +362,13 @@
             return 'normal';
         }
 
-        // 集荷ボタンクリック時の挙動
         function handleCollectionClick(habitId) {
             const habit = habitsData.find(h => h.id == habitId);
             const status = checkDeadlineStatus(habit);
-
             if (status !== 'normal') {
-                // 結果判定モーダルを表示
                 showResultModal(habit, status);
             } else {
-                // 通常アーカイブメニューを表示
-                editIndex = habitsData.indexOf(habit); // 操作対象をセット
+                editIndex = habitsData.indexOf(habit);
                 document.getElementById('archive-menu-modal').classList.add('open');
             }
         }
@@ -378,7 +379,6 @@
             const title = document.getElementById('result-title');
             const msg = document.getElementById('result-msg');
             const btns = document.getElementById('result-btns');
-
             if (status === 'achieved') {
                 icon.textContent = "🎉";
                 title.textContent = "目標達成！";
@@ -401,7 +401,14 @@
             habit.archived = true;
             habit.result = status;
             
-            closeModal(); // 全モーダル閉じる
+            // ★Local Storageに保存
+            const localArchived = JSON.parse(localStorage.getItem('archivedHabits') || '[]');
+            if(!localArchived.includes(id)) {
+                localArchived.push(id);
+                localStorage.setItem('archivedHabits', JSON.stringify(localArchived));
+            }
+
+            closeModal();
             renderApp();
             
             const activeHabits = habitsData.filter(h => h.archived !== true);
@@ -415,6 +422,13 @@
             const habit = habitsData.find(h => h.id == id);
             habit.startDate = todayStr;
             habit.history = []; 
+            habit.archived = false;
+
+            // ★Local Storageから削除
+            const localArchived = JSON.parse(localStorage.getItem('archivedHabits') || '[]');
+            const newArchived = localArchived.filter(aid => aid != id);
+            localStorage.setItem('archivedHabits', JSON.stringify(newArchived));
+
             closeModal();
             renderApp();
             await postData({ action: 'edit', id: habit.id, startDate: todayStr, history: [], archived: false });
@@ -446,7 +460,6 @@
             addTab.onclick = () => openAddModal();
             tabList.appendChild(addTab);
 
-            // アーカイブタブ（常に生成するが表示はCSS等で制御可能、今回はシンプルに配置）
             if (archivedHabits.length > 0) {
                 const arcTab = document.createElement('div');
                 arcTab.className = 'tab-item';
@@ -469,8 +482,6 @@
             const isDoneToday = habit.history.includes(todayStr);
             const levelInfo = getLevelInfo(count, habit.type);
             const deadlineStatus = checkDeadlineStatus(habit);
-            
-            // アラート状態かどうか
             const alertClass = deadlineStatus !== 'normal' ? 'alert-glow' : '';
 
             let percent = 0;
@@ -495,15 +506,12 @@
                     <div class="progress-bar-fill" style="width: ${percent}%;"></div>
                 </div>
                 <div class="goal-status">${statusText}</div>
-                
                 <div class="action-row">
                     <div class="icon-btn" onclick="openEditModal(${habit.id})">⚙️</div>
-                    
                     <button class="check-btn ${isDoneToday ? 'checked' : ''}" 
                             onclick="updateHabit('${habit.id}', '${todayStr}')">
                         ${isDoneToday ? '✔' : '+'}
                     </button>
-                    
                     <div class="icon-btn ${alertClass}" onclick="handleCollectionClick(${habit.id})">📦</div>
                 </div>
             `;
@@ -517,7 +525,6 @@
             page.className = 'habit-page';
             page.id = 'page-archive';
             page.style.paddingTop = '20px';
-            
             const title = document.createElement('h3');
             title.textContent = "殿堂入り (アーカイブ)";
             title.style.marginTop = "0";
@@ -528,12 +535,10 @@
                 div.className = 'calendar-card';
                 div.style.marginBottom = '15px';
                 div.style.textAlign = 'left';
-                
                 let status = '';
                 if(h.result === 'achieved') status = '🏆 達成';
                 else if(h.result === 'failed') status = '🔚 終了';
                 else status = '⏸ 中断'; 
-
                 div.innerHTML = `
                     <div style="font-weight:bold; margin-bottom:5px;">${h.name}</div>
                     <div style="font-size:12px; color:var(--text-sub);">
@@ -612,12 +617,9 @@
             const state = calendarStates[habitId];
             let newMonth = state.month + offset;
             let newYear = state.year;
-            
             if (newMonth > 11) { newMonth = 0; newYear++; }
             else if (newMonth < 0) { newMonth = 11; newYear--; }
-            
             calendarStates[habitId] = { year: newYear, month: newMonth };
-            
             const habit = habitsData.find(h => h.id == habitId);
             const oldWrapper = document.getElementById(`cal-wrapper-${habitId}`);
             const newWrapper = createCalendar(habit);
@@ -628,14 +630,11 @@
             document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
             const tabElem = document.getElementById(`tab-${tabId}`);
             if (!tabElem) return; 
-
             tabElem.classList.add('active');
             tabElem.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-
             document.querySelectorAll('.habit-page').forEach(p => {
                 p.classList.remove('active', 'slide-left', 'slide-right');
             });
-            
             const newPage = document.getElementById(`page-${tabId}`);
             if (newPage) {
                 newPage.classList.add('active');
@@ -715,7 +714,6 @@
             deleteArea.style.display = 'block'; modal.classList.add('open');
         }
         
-        // 全てのモーダルを閉じる
         function closeModal() {
             document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('open'));
         }
@@ -751,7 +749,6 @@
             }
         };
 
-        // マニュアルアーカイブ（中断）
         document.getElementById('manual-archive-btn').onclick = async () => {
              if(!confirm("この習慣を中断してアーカイブしますか？\n（いつでも再開はできませんが履歴は残ります）")) return;
              const habit = habitsData[editIndex];
@@ -761,6 +758,12 @@
         document.getElementById('delete-btn').onclick = async () => {
             if(!confirm("本当に削除しますか？\n（履歴も完全に消えます）")) return;
             const habit = habitsData[editIndex];
+            
+            // ★Local Storageから削除
+            const localArchived = JSON.parse(localStorage.getItem('archivedHabits') || '[]');
+            const newArchived = localArchived.filter(aid => aid != habit.id);
+            localStorage.setItem('archivedHabits', JSON.stringify(newArchived));
+
             habitsData.splice(editIndex, 1);
             
             renderApp();
