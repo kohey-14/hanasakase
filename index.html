@@ -51,11 +51,12 @@
         .tab-list { display: flex; overflow-x: auto; padding: 0 20px; gap: 12px; scrollbar-width: none; }
         .tab-list::-webkit-scrollbar { display: none; }
         .tab-item {
-            white-space: nowrap; padding: 8px 14px; border-radius: 18px;
+            white-space: nowrap; padding: 8px 16px; border-radius: 18px;
             background: var(--bg-color); color: var(--text-sub); font-size: 13px; font-weight: 600;
             transition: all 0.2s; cursor: pointer;
-            /* 空のタブが表示されないようにする安全策 */
-            min-width: 20px; 
+            
+            /* ★ここが重要: 縮まないようにする */
+            flex-shrink: 0; 
             text-align: center;
         }
         /* 名前がないタブを非表示にする（ドット対策） */
@@ -311,7 +312,6 @@
                 // データ補正
                 habitsData.forEach(h => {
                     if(!h.startDate) h.startDate = new Date(h.id).toISOString().split('T')[0];
-                    // 名前がない場合は補正
                     if(!h.name || h.name.trim() === "") h.name = "無題";
                 });
 
@@ -393,7 +393,6 @@
             
             renderApp();
             
-            // アーカイブ後は一番左のタブ（または有効なタブ）に戻す
             const activeHabits = habitsData.filter(h => h.archived !== true);
             if(activeHabits.length > 0) {
                 switchTab(activeHabits[0].id);
@@ -417,7 +416,6 @@
             tabList.innerHTML = '';
             contentArea.innerHTML = '';
 
-            // ★厳密にフィルタリング（undefined も除外）
             const activeHabits = habitsData.filter(h => h.archived !== true);
             const archivedHabits = habitsData.filter(h => h.archived === true);
 
@@ -608,7 +606,6 @@
         function switchTab(tabId, direction = null) {
             document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
             const tabElem = document.getElementById(`tab-${tabId}`);
-            // タブが存在しない場合（削除・アーカイブ直後など）のガード
             if (!tabElem) return; 
 
             tabElem.classList.add('active');
