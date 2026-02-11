@@ -315,14 +315,17 @@
                 // ★Local Storageからアーカイブ状態を取得
                 const localArchived = JSON.parse(localStorage.getItem('archivedHabits') || '[]');
 
-                // ★データクリーニングとステータス統合
-                habitsData = rawData
-                    .filter(h => h.name && h.name.trim() !== "") // 名前がないデータ（空行）を排除
-                    .map(h => {
-                        // GASからデータがない場合は補完
+                // ★データレスキュー＆クリーニング
+                habitsData = rawData.map(h => {
+                        // データレスキュー：名前がない場合は仮の名前をつける
+                        if(!h.name || h.name.trim() === "") h.name = "📦 復元データ";
+                        
+                        // データ補完
                         if(!h.startDate) h.startDate = new Date(h.id).toISOString().split('T')[0];
-                        // Local StorageにIDがあればアーカイブ済みにする
+                        
+                        // アーカイブ状態の適用
                         if(localArchived.includes(h.id)) h.archived = true;
+                        
                         return h;
                     });
 
