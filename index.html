@@ -37,6 +37,7 @@
             margin: 0; padding: 0; padding-bottom: 40px; height: 100vh;
             display: flex; flex-direction: column; user-select: none;
             -webkit-tap-highlight-color: transparent;
+            overscroll-behavior-y: none; /* バウンス抑制 */
         }
 
         /* ヘッダー & タブ */
@@ -58,10 +59,17 @@
         .tab-item.add-tab { color: var(--primary); font-size: 16px; padding: 8px 16px; }
 
         /* コンテンツ */
-        #content-area { flex: 1; padding: 20px; overflow-y: auto; }
-        .habit-page { display: none; flex-direction: column; align-items: center; animation: fadeIn 0.3s; }
-        .habit-page.active { display: flex; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        #content-area { flex: 1; padding: 20px; overflow-y: auto; position: relative; }
+        
+        .habit-page { display: none; flex-direction: column; align-items: center; width: 100%; }
+        /* アニメーション用クラス */
+        .habit-page.active { display: flex; animation: fadeIn 0.3s ease-out; }
+        .slide-left { animation: slideInRight 0.3s ease-out; }
+        .slide-right { animation: slideInLeft 0.3s ease-out; }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideInRight { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes slideInLeft { from { transform: translateX(-20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
         /* 植物エリア */
         .plant-area {
@@ -70,7 +78,9 @@
         }
         .plant-icon {
             font-size: 80px; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.1)); margin-bottom: 10px;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
+        .plant-icon:hover { transform: scale(1.1); }
         .habit-level { font-size: 13px; color: var(--text-sub); font-weight: bold; }
         .streak-info { font-size: 12px; color: #ff9500; font-weight: bold; margin-top: 4px; height: 1.2em; }
 
@@ -111,6 +121,18 @@
         }
         .check-btn:active { transform: scale(0.95); }
 
+        /* アニメーション（ラバーバンド効果） */
+        @keyframes rubberBand {
+            0% { transform: scale(1); }
+            30% { transform: scale(1.25, 0.75); }
+            40% { transform: scale(0.75, 1.25); }
+            50% { transform: scale(1.15, 0.85); }
+            65% { transform: scale(0.95, 1.05); }
+            75% { transform: scale(1.05, 0.95); }
+            100% { transform: scale(1); }
+        }
+        .check-btn.animating { animation: rubberBand 0.5s linear; }
+
         /* カレンダー */
         .calendar-card {
             background: var(--card-bg); border-radius: 20px; padding: 20px; width: 100%; max-width: 340px;
@@ -137,9 +159,10 @@
         }
         @keyframes popUp { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
-        input {
+        input, select {
             width: 100%; padding: 12px; margin: 10px 0; border-radius: 12px; border: 1px solid var(--border);
             background: var(--bg-color); color: var(--text-main); font-size: 16px; box-sizing: border-box;
+            appearance: none; -webkit-appearance: none;
         }
         label { display: block; text-align: left; font-size: 12px; color: var(--text-sub); margin-top: 10px; margin-left: 5px;}
         
@@ -159,6 +182,7 @@
     <div id="content-area">
         <div id="loading">読み込み中...</div>
     </div>
+
     <div id="edit-modal" class="modal-overlay">
         <div class="modal-card">
             <h3 id="modal-title" style="margin-top:0;">習慣の設定</h3>
@@ -184,14 +208,67 @@
         const contentArea = document.getElementById('content-area');
         const todayStr = new Date().toISOString().split('T')[0];
         let habitsData = []; let editIndex = -1;
-        const plantLevels = [
-            { threshold: 0, icon: "🌱", title: "Start" },
-            { threshold: 3, icon: "🌿", title: "Step 1" },
-            { threshold: 7, icon: "🪴", title: "Step 2" },
-            { threshold: 14, icon: "🌳", title: "Step 3" },
-            { threshold: 30, icon: "🍎", title: "Master" },
-            { threshold: 100, icon: "👑", title: "Legend" }
+
+        // ★スワイプ用変数
+        let touchStartX = 0;
+        let touchStartY = 0;
+
+        // ★植物定義
+        const plantDefinitions = {
+            "apple": { name: "🍎 リンゴの木", levels: ["🌱", "🌿", "🌳", "🍎", "🥧", "👑"] },
+            "sunflower": { name: "🌻 ヒマワリ", levels: ["🌱", "🍃", "🌷", "🌻", "🏖️", "🌞"] },
+            "rose": { name: "🌹 情熱のバラ", levels: ["🌱", "🌿", "🥀", "🌹", "💐", "👸"] },
+            "grapes": { name: "🍇 豊穣のブドウ", levels: ["🌱", "🍃", "🌿", "🍇", "🍷", "🍾"] },
+            "sakura": { name: "🌸 桜の木", levels: ["🌱", "🎋", "🌸", "🌸", "🍡", "🏯"] },
+            "cactus": { name: "🌵 サボテン", levels: ["🌱", "🌵", "🌵", "🌸", "🏜️", "🦎"] },
+            "money": { name: "💎 富のなる木", levels: ["🌱", "🌿", "💰", "💎", "🏦", "🚀"] }
+        };
+
+        const levelThresholds = [
+            { t: 0, title: "Start" },
+            { t: 3, title: "Step 1" },
+            { t: 7, title: "Step 2" },
+            { t: 14, title: "Step 3" },
+            { t: 30, title: "Master" },
+            { t: 100, title: "Legend" }
         ];
+
+        // --- スワイプ処理 ---
+        contentArea.addEventListener('touchstart', (e) => {
+            touchStartX = e.changedTouches[0].screenX;
+            touchStartY = e.changedTouches[0].screenY;
+        }, {passive: true});
+
+        contentArea.addEventListener('touchend', (e) => {
+            const touchEndX = e.changedTouches[0].screenX;
+            const touchEndY = e.changedTouches[0].screenY;
+            handleSwipe(touchStartX, touchStartY, touchEndX, touchEndY);
+        }, {passive: true});
+
+        function handleSwipe(sX, sY, eX, eY) {
+            const diffX = sX - eX;
+            const diffY = sY - eY;
+            
+            // 感度: 50px以上動いたらスワイプと判定
+            // 縦スクロール誤爆防止: 横移動の方が大きい時だけ反応
+            if (Math.abs(diffX) > 50 && Math.abs(diffX) > Math.abs(diffY)) {
+                // 現在のタブインデックスを取得
+                const currentIndex = habitsData.findIndex((_, i) =>
+                    document.getElementById(`tab-${i}`).classList.contains('active')
+                );
+                
+                if (currentIndex === -1) return;
+
+                if (diffX > 0) {
+                    // 左スワイプ -> 次のタブへ
+                    if (currentIndex < habitsData.length - 1) switchTab(currentIndex + 1, 'next');
+                } else {
+                    // 右スワイプ -> 前のタブへ
+                    if (currentIndex > 0) switchTab(currentIndex - 1, 'prev');
+                }
+            }
+        }
+        // ------------------
 
         async function fetchHabits() {
             try {
@@ -216,46 +293,37 @@
 
             let streak = 0;
             let checkDate = new Date(sortedDates[0]);
-            
-            // 履歴の最新が今日なら今日から、昨日なら昨日からカウント開始
-            // 配列はソート済みなので、連続しているかチェック
             let current = new Date(checkDate);
             
             for (const dateStr of sortedDates) {
                 const d = new Date(dateStr);
-                // 日付の差分を計算（ミリ秒 -> 日）
                 const diffTime = Math.abs(current - d);
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
                 
-                // 初回ループは必ず差分0
-                if (diffDays <= 1) { // 連続している（0日差または1日差）
-                    if (diffDays === 1) streak++; // 1日差ならストリーク加算
-                    else if (streak === 0) streak = 1; // 初回カウント
-                    current = d; // 基準日を更新
+                if (diffDays <= 1) { 
+                    if (diffDays === 1) streak++; 
+                    else if (streak === 0) streak = 1; 
+                    current = d; 
                 } else {
-                    break; // 連続が途切れたら終了
+                    break; 
                 }
             }
-            
-            // 簡易ロジック：履歴を全部見て、1日ずつ遡って存在するかチェックする方が確実
-            // 再実装（より堅牢なロジック）
-            let verifiedStreak = 0;
-            let targetDate = new Date();
-            // 今日チェックしていなければ昨日から検証
-            if (!history.includes(todayStr)) {
-                targetDate.setDate(targetDate.getDate() - 1);
+            return streak;
+        }
+
+        function getLevelInfo(count, habitType) {
+            const typeKey = (habitType && plantDefinitions[habitType]) ? habitType : "apple";
+            const plantDef = plantDefinitions[typeKey];
+            let levelIndex = 0;
+            for (let i = 0; i < levelThresholds.length; i++) {
+                if (count >= levelThresholds[i].t) levelIndex = i;
             }
-            
-            while (true) {
-                const dateString = targetDate.toISOString().split('T')[0];
-                if (history.includes(dateString)) {
-                    verifiedStreak++;
-                    targetDate.setDate(targetDate.getDate() - 1);
-                } else {
-                    break;
-                }
-            }
-            return verifiedStreak;
+            if(levelIndex >= plantDef.levels.length) levelIndex = plantDef.levels.length - 1;
+            return {
+                icon: plantDef.levels[levelIndex],
+                title: levelThresholds[levelIndex].title,
+                plantName: plantDef.name
+            };
         }
 
         function renderApp() {
@@ -286,7 +354,7 @@
             const count = habit.history.length;
             const goal = habit.goal || 0;
             const isDoneToday = habit.history.includes(todayStr);
-            const levelInfo = getLevelInfo(count);
+            const levelInfo = getLevelInfo(count, habit.type);
             const streak = calculateStreak(habit.history);
 
             let percent = 0;
@@ -301,6 +369,7 @@
             page.innerHTML = `
                 <div class="plant-area">
                     <div class="plant-icon">${levelInfo.icon}</div>
+                    <div class="habit-level" style="font-size:11px; color:#34c759; margin-bottom:2px;">${levelInfo.plantName}</div>
                     <div class="habit-level">${levelInfo.title}</div>
                     <div class="streak-info">${streakHtml}</div>
                 </div>
@@ -311,7 +380,7 @@
                 <div class="action-row">
                     <div class="icon-btn" onclick="openEditModal(${index})">⚙️</div>
                     <button class="check-btn ${isDoneToday ? 'checked' : ''}" 
-                            onclick="triggerVibrate(); updateHabit('${habit.id}', '${todayStr}', ${index})">
+                            onclick="updateHabit('${habit.id}', '${todayStr}', ${index})">
                         ${isDoneToday ? '✔' : '+'}
                     </button>
                     <div class="icon-btn" style="opacity:0; pointer-events:none;"></div>
@@ -345,20 +414,34 @@
             return wrapper;
         }
 
-        function switchTab(index) {
+        function switchTab(index, direction = null) {
             document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
-            document.getElementById(`tab-${index}`).classList.add('active');
-            document.querySelectorAll('.habit-page').forEach(p => p.classList.remove('active'));
-            document.getElementById(`page-${index}`).classList.add('active');
-        }
+            const newTab = document.getElementById(`tab-${index}`);
+            newTab.classList.add('active');
+            
+            // タブを自動スクロールで表示領域に入れる
+            newTab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
 
-        function triggerVibrate() {
-            if (navigator.vibrate) {
-                navigator.vibrate(15);
-            }
+            document.querySelectorAll('.habit-page').forEach(p => {
+                p.classList.remove('active', 'slide-left', 'slide-right');
+            });
+            
+            const newPage = document.getElementById(`page-${index}`);
+            newPage.classList.add('active');
+            
+            // スワイプ方向に応じたアニメーションクラス付与
+            if (direction === 'next') newPage.classList.add('slide-left');
+            else if (direction === 'prev') newPage.classList.add('slide-right');
         }
 
         async function updateHabit(id, dateStr, index) {
+            const btn = document.querySelector(`#page-${index} .check-btn`);
+            if(btn) {
+                btn.classList.remove('animating');
+                void btn.offsetWidth;
+                btn.classList.add('animating');
+            }
+
             const habit = habitsData.find(h => h.id == id);
             const isDone = habit.history.includes(dateStr);
             if (isDone) habit.history = habit.history.filter(d => d !== dateStr);
@@ -404,16 +487,28 @@
             const goal = parseInt(goalInput.value) || 0;
             if(!name) return;
             closeModal();
+
             if(editIndex === -1) {
+                const plantKeys = Object.keys(plantDefinitions);
+                const randomType = plantKeys[Math.floor(Math.random() * plantKeys.length)];
+
                 const tempId = Date.now();
-                habitsData.push({ id: tempId, name: name, history: [], goal: goal });
-                renderApp(); switchTab(habitsData.length - 1);
-                await postData({ action: 'add', name: name, goal: goal });
+                habitsData.push({ id: tempId, name: name, history: [], goal: goal, type: randomType });
+                
+                renderApp(); 
+                switchTab(habitsData.length - 1);
+                
+                setTimeout(() => {
+                    const plantName = plantDefinitions[randomType].name;
+                    alert(`🌱 新しい種を植えました！\n【${plantName}】が育ちます。`);
+                }, 300);
+
+                await postData({ action: 'add', name: name, goal: goal, type: randomType });
             } else {
                 const habit = habitsData[editIndex];
                 habit.name = name; habit.goal = goal;
                 renderApp(); switchTab(editIndex);
-                await postData({ action: 'edit', id: habit.id, name: name, goal: goal });
+                await postData({ action: 'edit', id: habit.id, name: name, goal: goal, type: habit.type });
             }
         };
 
@@ -428,12 +523,6 @@
         async function postData(payload) {
             try { await fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) }); }
             catch(e) { console.error(e); }
-        }
-
-        function getLevelInfo(count) {
-            let info = plantLevels[0];
-            for (const l of plantLevels) if (count >= l.threshold) info = l;
-            return info;
         }
 
         fetchHabits();
